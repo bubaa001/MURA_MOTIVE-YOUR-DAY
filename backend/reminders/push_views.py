@@ -5,7 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
-from .models import PushCampaign
+from .models import NotificationLog, PushCampaign
 from .signo import SignoError, send_event
 
 
@@ -45,3 +45,26 @@ class PushCampaignViewSet(viewsets.ModelViewSet):
         campaign.last_sent_date = timezone.localdate()
         campaign.save(update_fields=("last_sent_date",))
         return Response({"delivered": result.get("delivered", 0), "event_id": result.get("eventId")})
+
+    @action(detail=True, methods=["post"])
+    def test(self, request, pk=None):
+        """Send now AND drop it into the caller's in-app feed so they can see
+        it on their phone immediately (bell) while holding the device."""
+        campaign = self.get_object()
+        try:
+            result = deliver_campaign(campaign)
+        except SignoError as exc:
+            return Response({"detail": f"Signo push failed: {exc}"}, status=502)
+        NotificationLog.objects.create(
+            user=request.user,
+            title=campaign.title,
+            body=campaign.body or "Push test",
+            kind="general",
+        )
+        return Response(
+            {
+                "delivered": result.get("delivered", 0),
+                "event_id": result.get("eventId"),
+                "in_app": True,
+            }
+        )

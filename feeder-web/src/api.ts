@@ -266,3 +266,7 @@ export function sendPushCampaign(id: number): Promise<{ delivered: number; event
 export function deletePushCampaign(id: number): Promise<void> {
   return request("/feeder/push/" + id + "/", { method: "DELETE" });
 }
+
+export function testPushCampaign(id: number): Promise<{ delivered: number; event_id?: string; in_app: boolean }> {
+  return request("/feeder/push/" + id + "/test/", { method: "POST" });
+}

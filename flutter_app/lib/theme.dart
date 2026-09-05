@@ -130,7 +130,7 @@ class MuraPalette {
     cardAlt: Color(0xFFF7EDE1),
     cardHi: Color(0xFFF2E7DA),
     field: Color(0xFFF2E9DF),
-    amber: Color(0xFF8A5B00),
+    amber: Color(0xFFB4730A),
     amberDeep: Color(0xFFF59E0B),
     onAmber: Color(0xFF472A00),
     text: Color(0xFF241A12),

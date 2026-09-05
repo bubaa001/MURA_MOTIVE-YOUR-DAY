@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLoggedIn, listItems, reviewItem, bulkReview, syncApproved, submitManually, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, deletePushCampaign } from "./api";
+import { isLoggedIn, listItems, reviewItem, bulkReview, syncApproved, submitManually, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, testPushCampaign, deletePushCampaign } from "./api";
 import type { PushCampaign, PushPayload } from "./api";
 import Login from "./Login";
 import type { ContentPayload, ContentStatus, Item, ItemType, LiveItem, ManualSubmission, ReviewStatus } from "./types";
@@ -814,6 +814,19 @@ function PushManager() {
     }
   }
 
+  async function testOne(c: PushCampaign) {
+    setBusy(true);
+    try {
+      const res = await testPushCampaign(c.id);
+      flash("Test sent to " + (res.delivered ?? 0) + " device(s) and your in-app feed.");
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeOne(c: PushCampaign) {
     if (!window.confirm("Delete this campaign?")) return;
     await deletePushCampaign(c.id).catch((e) => setErr(e.message));
@@ -896,6 +909,7 @@ function PushManager() {
             <span className="c-meta muted">{scheduleLabel(c)}</span>
             <span className="c-status"><span className={"status " + (c.last_sent_date ? "st-done" : "st-draft")}>{c.last_sent_date ? "Last sent " + c.last_sent_date : "Not sent"}</span></span>
             <span className="c-actions">
+              <button onClick={() => testOne(c)} title="Deliver now and show in your in-app feed">Test</button>
               <button onClick={() => sendOne(c)}>Send</button>
               <button className="bad" onClick={() => removeOne(c)}>Delete</button>
             </span>

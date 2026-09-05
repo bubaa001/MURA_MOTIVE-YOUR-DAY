@@ -2,7 +2,7 @@
 name: mura
 description: MURA — personal discipline app (Obsidian & Amber).
 publish_to: 'none'
-version: 1.2.4+7
+version: 1.2.5+8
 
 environment:
   sdk: ^3.5.0
