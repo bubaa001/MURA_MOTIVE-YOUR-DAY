@@ -75,6 +75,41 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Home widget family data sync (quote / insight / habits / streak).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.bubaa.mura/widgets")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "update") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val args = call.arguments as? Map<*, *>
+                if (args != null) {
+                    val edit = getSharedPreferences("mura_widgets", MODE_PRIVATE).edit()
+                    fun putString(key: String, raw: Any?) {
+                        if (raw is String) edit.putString(key, raw)
+                        else if (raw is Number) edit.putString(key, raw.toString())
+                    }
+                    putString("quote", args["quote"])
+                    putString("quote_source", args["quote_source"])
+                    putString("insight", args["insight"])
+                    putString("insight_source", args["insight_source"])
+                    putString("streak", args["streak"])
+                    putString("streak_label", args["streak_label"])
+                    if (args["habits_names"] is List<*>) {
+                        edit.putString("habits_names", JSONArray(args["habits_names"] as List<*>).toString())
+                    }
+                    if (args["habits_states"] is List<*>) {
+                        edit.putString("habits_states", JSONArray(args["habits_states"] as List<*>).toString())
+                    }
+                    edit.apply()
+                    QuoteWidgetProvider.renderAll(this)
+                    StreakWidgetProvider.renderAll(this)
+                    InsightWidgetProvider.renderAll(this)
+                    HabitsWidgetProvider.renderAll(this)
+                }
+                result.success(null)
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, motionChannelName)
             .setMethodCallHandler { call, result ->
                 if (call.method != "update") {

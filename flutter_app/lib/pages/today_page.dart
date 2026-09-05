@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../home_widgets.dart';
 import '../models.dart';
 import '../refresh_bus.dart';
 import '../theme.dart'; // ignore: unused_import
@@ -134,7 +135,25 @@ class _TodayPageState extends State<TodayPage> with AppRefreshListener {
       } catch (_) {}
     }
     await _enrichStreaks();
+    _syncWidgets();
     if (!silent && mounted) setState(() => _loading = false);
+  }
+
+  /// Push whatever loaded to the home-screen widgets (quote, insight,
+  /// today's checklist, best streak).
+  void _syncWidgets() {
+    final int bestStreak = _streaks.values.isEmpty
+        ? 0
+        : _streaks.values.reduce((int a, int b) => a > b ? a : b);
+    syncHomeWidgets(
+      quote: _content?.quote?.text,
+      quoteSource: _content?.quote?.source,
+      insight: _content?.insight?.text,
+      insightSource: _content?.insight?.source,
+      habitNames: _items.map((TodayItem item) => item.name).toList(),
+      habitStates: _items.map((TodayItem item) => item.completed).toList(),
+      streak: bestStreak,
+    );
   }
 
   /// Optional enrichment: seed the streak chips from GET /habits/.
@@ -167,6 +186,7 @@ class _TodayPageState extends State<TodayPage> with AppRefreshListener {
         _doneOverride[id] = res.completed;
         _streaks[id] = res.currentStreak;
       });
+      _syncWidgets();
     } catch (_) {
       if (!mounted) return;
       setState(() => _doneOverride.remove(id));
