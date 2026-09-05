@@ -16,12 +16,13 @@ def manifest(request):
     release = Release.objects.order_by("-version_code").first()
     if release is None:
         return Response({"detail": "No release published yet."}, status=404)
+    apk_url = release.apk_url_override or request.build_absolute_uri(release.apk.url)
     return Response(
         {
             "version_code": release.version_code,
             "version_name": release.version_name,
             "notes": release.notes,
-            "apk_url": request.build_absolute_uri(release.apk.url),
+            "apk_url": apk_url,
             "released_at": release.created_at,
         }
     )

@@ -12,7 +12,11 @@ class Release(models.Model):
     version_code = models.PositiveIntegerField(unique=True)
     version_name = models.CharField(max_length=50)
     notes = models.TextField(blank=True, help_text="Short changelog shown in the app.")
-    apk = models.FileField(upload_to="releases/", help_text="app-release.apk")
+    apk = models.FileField(upload_to="releases/", help_text="app-release.apk (legacy local hosting)")
+    apk_url_override = models.URLField(
+        blank=True,
+        help_text="Fast CDN URL (e.g. GitHub Release asset). When set, the app downloads from here instead of Django/media.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
