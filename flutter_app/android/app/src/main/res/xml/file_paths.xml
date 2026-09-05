@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Directories the FileProvider may share with the installer. -->
+<paths>
+    <files-path name="apks" path="apks/" />
+</paths>

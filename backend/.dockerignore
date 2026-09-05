@@ -1,0 +1,24 @@
+# Virtualenvs
+.venv/
+venv/
+
+# Local state — never bake into the image
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Python artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Secrets & local env files (.env.example stays copy-able inside the image)
+.env
+.env.*
+!.env.example
+
+# VCS / tooling noise
+.git/
+.gitignore
+.pytest_cache/

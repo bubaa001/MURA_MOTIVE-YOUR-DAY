@@ -1,0 +1,28 @@
+
+name: mura
+description: MURA — personal discipline app (Obsidian & Amber).
+publish_to: 'none'
+version: 1.2.4+7
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.3.0
+  image_picker: ^1.1.2
+  package_info_plus: ^8.0.0
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  shaders:
+    - assets/shaders/liquid_transition.frag

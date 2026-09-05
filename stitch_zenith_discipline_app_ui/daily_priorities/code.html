@@ -1,0 +1,205 @@
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&amp;family=Hanken+Grotesk:wght@400;600&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"tertiary-fixed":"#e1e0ff","secondary-container":"#29a195","inverse-surface":"#e5e2e1","error":"#ffb4ab","surface-container":"#201f1f","tertiary-container":"#a7a9ff","inverse-on-surface":"#313030","error-container":"#93000a","on-background":"#e5e2e1","primary-container":"#f59e0b","surface-variant":"#353534","surface-container-high":"#2a2a2a","tertiary":"#c7c8ff","on-primary-container":"#613b00","surface":"#131313","on-tertiary-fixed-variant":"#2f2ebe","primary-fixed":"#ffddb8","on-primary-fixed":"#2a1700","on-surface-variant":"#d8c3ad","background":"#131313","on-error":"#690005","tertiary-fixed-dim":"#c0c1ff","surface-bright":"#393939","secondary":"#6bd8cb","outline":"#a08e7a","inverse-primary":"#855300","surface-container-low":"#1c1b1b","surface-container-highest":"#353534","on-secondary":"#003732","on-secondary-fixed":"#00201d","on-secondary-container":"#00302b","on-primary-fixed-variant":"#653e00","on-secondary-fixed-variant":"#005049","on-tertiary-container":"#2b29bb","on-error-container":"#ffdad6","on-surface":"#e5e2e1","on-tertiary-fixed":"#07006c","on-primary":"#472a00","primary-fixed-dim":"#ffb95f","surface-dim":"#131313","outline-variant":"#534434","surface-tint":"#ffb95f","secondary-fixed":"#89f5e7","on-tertiary":"#1000a9","primary":"#ffc174","secondary-fixed-dim":"#6bd8cb","surface-container-lowest":"#0e0e0e"},borderRadius:{DEFAULT:"0.25rem",lg:"0.5rem",xl:"0.75rem",full:"9999px"},spacing:{gutter:"16px","stack-lg":"40px","stack-md":"24px","stack-sm":"12px","container-padding":"24px",base:"8px"},fontFamily:{"label-md":["Hanken Grotesk"],"headline-md":["Sora"],"display-lg":["Sora"],"body-lg":["Hanken Grotesk"],"headline-lg":["Sora"],"stat-lg":["Sora"],"headline-lg-mobile":["Sora"],"body-md":["Hanken Grotesk"]},fontSize:{"label-md":["14px",{lineHeight:"20px",letterSpacing:"0.05em",fontWeight:"600"}],"headline-md":["24px",{lineHeight:"32px",fontWeight:"600"}],"display-lg":["48px",{lineHeight:"56px",letterSpacing:"-0.02em",fontWeight:"800"}],"body-lg":["18px",{lineHeight:"28px",fontWeight:"400"}],"headline-lg":["32px",{lineHeight:"40px",letterSpacing:"-0.01em",fontWeight:"700"}],"stat-lg":["36px",{lineHeight:"44px",fontWeight:"800"}],"headline-lg-mobile":["28px",{lineHeight:"34px",fontWeight:"700"}],"body-md":["16px",{lineHeight:"24px",fontWeight:"400"}]}}}}</script><style>@layer base{body{overscroll-behavior:none;background-color:#131313;}.pt-safe{padding-top:env(safe-area-inset-top,0px);}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}}</style></head><body class="bg-background text-on-surface font-body-md"><header class="fixed top-0 inset-x-0 z-50 bg-surface/80 backdrop-blur-xl pt-safe"><div class="h-16 px-container-padding flex items-center gap-stack-md"><button class="w-11 h-11 flex items-center justify-center text-on-surface" onclick="history.back()"><span class="material-symbols-outlined">arrow_back</span></button><h1 class="font-headline-md text-headline-md text-on-surface">Priorities</h1></div></header><main class="min-h-screen pt-16 bg-surface"><div class="flex flex-col w-full h-full relative overflow-hidden bg-background">
+<div class="px-container-padding pb-stack-lg pt-stack-sm flex-1 overflow-y-auto">
+<div class="flex flex-col gap-base mb-stack-md">
+<h2 class="font-headline-lg text-headline-lg-mobile text-on-background">Your Focus</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Drag to reorder your top priorities for today.</p>
+</div>
+<ul class="flex flex-col gap-stack-sm pb-24" id="priority-list">
+<li class="priority-item relative group flex items-center gap-base p-4 bg-surface-container rounded-xl shadow-sm transition-all duration-300 ease-out transform origin-center border border-white/[0.08]" draggable="true">
+<button class="drag-handle touch-none text-on-surface-variant opacity-60 group-active:opacity-100 p-2 -ml-2 cursor-grab active:cursor-grabbing">
+<span class="material-symbols-outlined">drag_indicator</span>
+</button>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="font-label-md text-label-md text-primary tracking-wider uppercase mb-1">Deep Work</span>
+<span class="font-body-lg text-body-lg text-on-surface truncate">Finalize Q3 Strategy Deck</span>
+</div>
+<button class="complete-btn w-8 h-8 rounded-full bg-surface-container-high border-2 border-outline-variant flex items-center justify-center transition-all duration-300 active:scale-95 group-[.completed]:bg-primary group-[.completed]:border-primary group-[.completed]:text-on-primary">
+<span class="material-symbols-outlined text-[18px] opacity-0 transition-opacity duration-300 group-[.completed]:opacity-100" style="font-variation-settings: 'FILL' 1;">check</span>
+</button>
+</li>
+<li class="priority-item relative group flex items-center gap-base p-4 bg-surface-container rounded-xl shadow-sm transition-all duration-300 ease-out transform origin-center border border-white/[0.08]" draggable="true">
+<button class="drag-handle touch-none text-on-surface-variant opacity-60 group-active:opacity-100 p-2 -ml-2 cursor-grab active:cursor-grabbing">
+<span class="material-symbols-outlined">drag_indicator</span>
+</button>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="font-label-md text-label-md text-secondary tracking-wider uppercase mb-1">Health</span>
+<span class="font-body-lg text-body-lg text-on-surface truncate">45min Zone 2 Cardio</span>
+</div>
+<button class="complete-btn w-8 h-8 rounded-full bg-surface-container-high border-2 border-outline-variant flex items-center justify-center transition-all duration-300 active:scale-95 group-[.completed]:bg-primary group-[.completed]:border-primary group-[.completed]:text-on-primary">
+<span class="material-symbols-outlined text-[18px] opacity-0 transition-opacity duration-300 group-[.completed]:opacity-100" style="font-variation-settings: 'FILL' 1;">check</span>
+</button>
+</li>
+<li class="priority-item relative group flex items-center gap-base p-4 bg-surface-container rounded-xl shadow-sm transition-all duration-300 ease-out transform origin-center border border-white/[0.08]" draggable="true">
+<button class="drag-handle touch-none text-on-surface-variant opacity-60 group-active:opacity-100 p-2 -ml-2 cursor-grab active:cursor-grabbing">
+<span class="material-symbols-outlined">drag_indicator</span>
+</button>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="font-label-md text-label-md text-tertiary-container tracking-wider uppercase mb-1">Growth</span>
+<span class="font-body-lg text-body-lg text-on-surface truncate">Read 20 pages of Huberman</span>
+</div>
+<button class="complete-btn w-8 h-8 rounded-full bg-surface-container-high border-2 border-outline-variant flex items-center justify-center transition-all duration-300 active:scale-95 group-[.completed]:bg-primary group-[.completed]:border-primary group-[.completed]:text-on-primary">
+<span class="material-symbols-outlined text-[18px] opacity-0 transition-opacity duration-300 group-[.completed]:opacity-100" style="font-variation-settings: 'FILL' 1;">check</span>
+</button>
+</li>
+<li class="priority-item relative group flex items-center gap-base p-4 bg-surface-container rounded-xl shadow-sm transition-all duration-300 ease-out transform origin-center border border-white/[0.08]" draggable="true">
+<button class="drag-handle touch-none text-on-surface-variant opacity-60 group-active:opacity-100 p-2 -ml-2 cursor-grab active:cursor-grabbing">
+<span class="material-symbols-outlined">drag_indicator</span>
+</button>
+<div class="flex-1 min-w-0 flex flex-col">
+<span class="font-label-md text-label-md text-error tracking-wider uppercase mb-1">Admin</span>
+<span class="font-body-lg text-body-lg text-on-surface truncate">Clear inbox to zero</span>
+</div>
+<button class="complete-btn w-8 h-8 rounded-full bg-surface-container-high border-2 border-outline-variant flex items-center justify-center transition-all duration-300 active:scale-95 group-[.completed]:bg-primary group-[.completed]:border-primary group-[.completed]:text-on-primary">
+<span class="material-symbols-outlined text-[18px] opacity-0 transition-opacity duration-300 group-[.completed]:opacity-100" style="font-variation-settings: 'FILL' 1;">check</span>
+</button>
+</li>
+</ul>
+</div>
+<div class="fixed bottom-0 left-0 right-0 p-container-padding bg-surface/90 backdrop-blur-xl border-t border-white/[0.05] z-10 pb-safe">
+<div class="flex items-center justify-between mb-2">
+<span class="font-label-md text-label-md text-on-surface-variant">Daily Progress</span>
+<span class="font-stat-lg text-[20px] leading-tight font-bold text-primary" id="progress-text">0%</span>
+</div>
+<div class="w-full h-3 bg-surface-container-highest rounded-full overflow-hidden relative shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
+<div class="h-full bg-gradient-to-r from-primary-fixed-dim to-primary rounded-full transition-all duration-500 ease-out w-[0%] relative" id="progress-bar">
+<div class="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite]"></div>
+</div>
+</div>
+</div>
+</div>
+<style>
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+  
+  .priority-item.dragging {
+    opacity: 0.8;
+    transform: scale(1.02);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    z-index: 50;
+    border-color: var(--color-primary, #ffc174);
+    background-color: #2a2a2a; 
+  }
+  
+  .priority-item.completed {
+    opacity: 0.5;
+  }
+  .priority-item.completed .font-body-lg {
+    text-decoration: line-through;
+    color: var(--color-on-surface-variant);
+  }
+</style>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const list = document.getElementById('priority-list');
+    let draggedItem = null;
+
+    
+    const items = document.querySelectorAll('.priority-item');
+    items.forEach(item => {
+      
+      const handle = item.querySelector('.drag-handle');
+      
+      
+      handle.addEventListener('touchstart', (e) => {
+         item.setAttribute('draggable', 'true');
+      }, {passive: true});
+
+      handle.addEventListener('touchend', (e) => {
+         
+      }, {passive: true});
+
+
+      item.addEventListener('dragstart', function(e) {
+        draggedItem = this;
+        setTimeout(() => {
+          this.classList.add('dragging');
+        }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+        
+        const dragIcon = document.createElement('div');
+        e.dataTransfer.setDragImage(dragIcon, 0, 0);
+      });
+
+      item.addEventListener('dragend', function() {
+        this.classList.remove('dragging');
+        draggedItem = null;
+        updateProgress(); 
+      });
+
+      item.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        
+        if (this === draggedItem) return;
+        
+        const bounding = this.getBoundingClientRect();
+        const offset = bounding.y + (bounding.height / 2);
+        
+        if (e.clientY - offset > 0) {
+          this.style.transform = 'translateY(-4px)';
+          this.nextSibling ? list.insertBefore(draggedItem, this.nextSibling) : list.appendChild(draggedItem);
+        } else {
+           this.style.transform = 'translateY(4px)';
+          list.insertBefore(draggedItem, this);
+        }
+      });
+      
+      item.addEventListener('dragleave', function() {
+          this.style.transform = '';
+      });
+      
+      item.addEventListener('drop', function() {
+          this.style.transform = '';
+      });
+
+      
+      const btn = item.querySelector('.complete-btn');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        item.classList.toggle('completed');
+        
+        if(item.classList.contains('completed')) {
+            if ('vibrate' in navigator) navigator.vibrate(50);
+            
+            const effect = document.createElement('div');
+            effect.className = 'absolute inset-0 bg-primary/20 rounded-xl blur-md pointer-events-none transition-opacity duration-500 opacity-100';
+            item.appendChild(effect);
+            setTimeout(() => { effect.style.opacity = '0'; }, 50);
+            setTimeout(() => { effect.remove(); }, 550);
+        }
+        
+        updateProgress();
+      });
+    });
+
+    function updateProgress() {
+      const total = items.length;
+      const completed = document.querySelectorAll('.priority-item.completed').length;
+      const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
+      
+      const bar = document.getElementById('progress-bar');
+      const text = document.getElementById('progress-text');
+      
+      bar.style.width = `${percentage}%`;
+      
+      let currentPercent = parseInt(text.innerText);
+      const diff = percentage - currentPercent;
+      
+      if(diff !== 0) {
+          let step = 0;
+          const animate = setInterval(() => {
+              step++;
+              const val = currentPercent + (diff > 0 ? step : -step);
+              text.innerText = `${val}%`;
+              if(step >= Math.abs(diff)) {
+                  clearInterval(animate);
+                  text.innerText = `${percentage}%`;
+              }
+          }, 10);
+      }
+    }
+  });
+</script></main></body></html>

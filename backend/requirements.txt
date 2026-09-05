@@ -1,0 +1,16 @@
+# MURA backend dependencies
+Django>=5.2,<6.2
+djangorestframework>=3.16
+djangorestframework-simplejwt>=5.4
+django-cors-headers>=4.6
+whitenoise>=6.0.0
+Pillow>=11.0          # Memory.photo image uploads
+
+# TheFeeder is human-only: write -> review -> sync (no AI extraction).
+
+# PostgreSQL driver — required when DB_ENGINE=postgresql (see .env.example)
+psycopg[binary]>=3.2 ; platform_system != "Windows"
+psycopg[binary]>=3.2 ; platform_system == "Windows"
+
+# Production server
+gunicorn>=23.0

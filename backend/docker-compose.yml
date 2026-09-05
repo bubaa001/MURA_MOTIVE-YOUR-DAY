@@ -1,0 +1,68 @@
+name: mura
+
+# Shared backend environment. Host overrides win: export SECRET_KEY,
+# POSTGRES_PASSWORD, etc. or use `docker compose --env-file .env up`.
+# Defaults below are self-contained dev values — see docs/deployment.md for
+# the production posture.
+x-backend-env: &backend-env
+  SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-key-change-me}
+  DEBUG: ${DEBUG:-false}
+  ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,.ngrok-free.app,.ngrok-free.dev,.ngrok.io,.ngrok.app}
+  TIMEZONE: ${TIMEZONE:-UTC}
+  CORS_ALLOW_ALL: ${CORS_ALLOW_ALL:-true}
+  DB_ENGINE: postgresql
+  DB_NAME: mura
+  DB_USER: mura
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-mura}
+  DB_HOST: db
+  DB_PORT: "5432"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mura
+      POSTGRES_USER: mura
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mura}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mura -d mura"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  # One-shot schema migration; "up" runs it before web starts. Re-run manually:
+  #   docker compose run --rm migrate
+  migrate:
+    build: .
+    command: python manage.py migrate --noinput
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build: .
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - media:/app/media          # uploaded memory photos survive rebuilds
+      - staticfiles:/app/staticfiles
+    ports:
+      # Host 8000 is often taken by a local dev server — remap if needed,
+      # e.g. "8001:8000".
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:
+  staticfiles:

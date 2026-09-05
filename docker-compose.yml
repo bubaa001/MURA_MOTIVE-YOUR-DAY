@@ -1,0 +1,112 @@
+name: mura
+
+# Open C:\mura in Docker Desktop and press Play on this Compose project.
+# First start builds the images, migrates the database, and seeds a local
+# development account. Database and uploaded-file volumes persist on restarts.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mura
+      POSTGRES_USER: mura
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mura}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mura -d mura"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+    command: python manage.py migrate --noinput
+    env_file:
+      - ./backend/.env
+    environment: &backend-env
+      DEBUG: "true"
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,.ngrok-free.app,.ngrok-free.dev,.ngrok.io,.ngrok.app}
+      TIMEZONE: ${TIMEZONE:-Africa/Dar_es_Salaam}
+      CORS_ALLOW_ALL: "true"
+      SECURE_SSL_REDIRECT: "false"
+      SECURE_COOKIES: "true"
+      DB_ENGINE: postgresql
+      DB_NAME: mura
+      DB_USER: mura
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-mura}
+      DB_HOST: db
+      DB_PORT: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  bootstrap:
+    build:
+      context: ./backend
+    command: python manage.py bootstrap_dev
+    env_file:
+      - ./backend/.env
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment: *backend-env
+    volumes:
+      - media:/app/media
+      - staticfiles:/app/staticfiles
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/admin/login/', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: ["http", "backend:8000", "--url", "https://crusader-easing-overlying.ngrok-free.dev", "--pooling-enabled"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "4040:4040"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:4040/api/tunnels >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  feeder:
+    build:
+      context: ./feeder-web
+    ports:
+      - "5175:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  media:
+  staticfiles:
