@@ -3,7 +3,7 @@
 /// - Singleton access via [ApiClient.instance]; base URL is supplied through
 ///   the build-time MURA_API_URL define.
 /// - Access/refresh JWTs live in flutter_secure_storage.
-/// - Every authorized request attaches 'Authorization: Bearer `<access`>'.
+/// - Every authorized request attaches 'Authorization: Bearer `<access>`'.
 /// - On 401 the client tries ONE refresh + retry; if that also fails it
 ///   wipes the session, notifies [ApiClient.sessionEpoch] listeners and
 ///   pushes '/login' through [muraNavigatorKey].
@@ -71,6 +71,30 @@ class ApiClient {
 
   static String get baseUrl =>
       _configuredBaseUrl.replaceFirst(RegExp(r'/+$'), '');
+
+  /// Base URL for serving media files (images, avatars, photos).
+  /// This is separate from the API base URL because media is served
+  /// from the root domain, not under /api/v1/.
+  static const String mediaBaseUrl = 'https://bubaa.pythonanywhere.com';
+
+  /// Builds a full URL for media files (avatars, photos, etc.)
+  ///
+  /// Example:
+  ///   getMediaUrl('/media/avatars/photo.jpg')
+  ///   => 'https://bubaa.pythonanywhere.com/media/avatars/photo.jpg'
+  ///
+  /// Handles:
+  ///   - null/empty paths -> returns empty string
+  ///   - absolute URLs (http/https) -> returns as-is
+  ///   - relative paths -> prepends mediaBaseUrl and ensures leading slash
+  String getMediaUrl(String? path) {
+    if (path == null || path.isEmpty) return '';
+    // If it's already an absolute URL, return as-is.
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    // Ensure the path starts with a slash.
+    final String normalized = path.startsWith('/') ? path : '/$path';
+    return '$mediaBaseUrl$normalized';
+  }
 
   final http.Client _http = http.Client();
   final FlutterSecureStorage _storage = const FlutterSecureStorage(

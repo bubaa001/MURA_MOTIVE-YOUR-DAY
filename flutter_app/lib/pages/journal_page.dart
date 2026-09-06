@@ -606,7 +606,7 @@ class _EntryCard extends StatelessWidget {
                     onTap: () =>
                         _showJournalMedia(context, entry.image!, entry.title),
                     child: Image.network(
-                      entry.image!,
+                      api.getMediaUrl(entry.image),
                       height: 170,
                       width: double.infinity,
                       fit: BoxFit.cover,
@@ -766,7 +766,7 @@ class _EntryCard extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child:
-                Image.network(url, fit: BoxFit.contain, semanticLabel: title),
+                Image.network(api.getMediaUrl(url), fit: BoxFit.contain, semanticLabel: title),
           ),
         ),
       ),
@@ -847,7 +847,7 @@ class _MemoryCard extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 Image.network(
-                  memory.photo!,
+                  api.getMediaUrl(memory.photo),
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
                     color: pal.field,

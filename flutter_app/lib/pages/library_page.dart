@@ -13,9 +13,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../refresh_bus.dart';
 import '../models.dart';
-import '../theme.dart'; // ignore: unused_import -- shared tokens land here later.
-
-// Obsidian & Amber palette (#0D0B09 family backgrounds, amber accents).
+import '../theme.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -197,6 +195,9 @@ class _LibraryTabState extends State<_LibraryTab>
   List<ContentItem>? _items;
   bool _busy = false;
   String? _err;
+  
+  // 🔑 Track which item is expanded
+  int? _expandedItemId;
 
   @override
   bool get wantKeepAlive => true;
@@ -312,6 +313,12 @@ class _LibraryTabState extends State<_LibraryTab>
         child: _QuoteCard(
           item: item,
           accent: widget.accent,
+          expanded: _expandedItemId == item.id,
+          onTap: () {
+            setState(() {
+              _expandedItemId = _expandedItemId == item.id ? null : item.id;
+            });
+          },
           onSave: (updated) {
             final index =
                 _items?.indexWhere((candidate) => candidate.id == updated.id) ??
@@ -374,7 +381,8 @@ class _HeroCard extends StatelessWidget {
       {required this.item, required this.accent, required this.label});
 
   @override
-  Widget build(BuildContext context) { final MuraPalette pal = MuraPalette.of(context);
+  Widget build(BuildContext context) {
+    final MuraPalette pal = MuraPalette.of(context);
     final scheme = Theme.of(context).colorScheme;
     final light = Theme.of(context).brightness == Brightness.light;
     return Container(
@@ -455,151 +463,227 @@ class _HeroCard extends StatelessWidget {
 class _QuoteCard extends StatelessWidget {
   final ContentItem item;
   final Color accent;
+  final bool expanded;
+  final VoidCallback onTap;
   final ValueChanged<ContentItem> onSave;
 
   const _QuoteCard({
     required this.item,
     required this.accent,
+    required this.expanded,
+    required this.onTap,
     required this.onSave,
   });
 
   @override
-  Widget build(BuildContext context) { final MuraPalette pal = MuraPalette.of(context);
+  Widget build(BuildContext context) {
+    final MuraPalette pal = MuraPalette.of(context);
     final scheme = Theme.of(context).colorScheme;
     final light = Theme.of(context).brightness == Brightness.light;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainer,
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOutCubic,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: light ? scheme.outlineVariant.withAlpha(100) : pal.stroke),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (item.image != null && item.image!.isNotEmpty) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                onTap: () =>
-                    _showMedia(context, item.image!, widgetLabel(item.type)),
-                child: Image.network(
-                  item.image!,
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
-          Row(
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+                color: light ? scheme.outlineVariant.withAlpha(100) : pal.stroke),
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: .14),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  widgetIcon(item.type),
-                  color: accent,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widgetLabel(item.type),
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                      ),
+              if (item.image != null && item.image!.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    onTap: () =>
+                        _showMedia(context, item.image!, widgetLabel(item.type)),
+                    child: Image.network(
+                      api.getMediaUrl(item.image),
+                      height: 150,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
                     ),
-                    const SizedBox(height: 4),
-                    InkWell(
-                      onTap: () =>
-                          _showText(context, item.text, widgetLabel(item.type)),
-                      borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: .14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      widgetIcon(item.type),
+                      color: accent,
+                      size: 21,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widgetLabel(item.type),
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _withQuotes(item.text),
+                          maxLines: expanded ? null : 5,
+                          overflow: expanded
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: 16,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // Show full content when expanded
+              if (expanded) ...[
+                const SizedBox(height: 14),
+                // Full source info
+                Row(
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 1,
+                      color: accent.withValues(alpha: .6),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
                       child: Text(
-                        _withQuotes(item.text),
-                        maxLines: 5,
+                        (item.source.trim().isEmpty)
+                            ? 'Unknown source'
+                            : item.source,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 16,
-                          height: 1.45,
-                          fontWeight: FontWeight.w600,
+                        style: _serif.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12.5,
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  (item.source.trim().isEmpty) ? '' : '- ${item.source}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: _serif.copyWith(
-                      color: accent.withValues(alpha: .75),
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic),
-                ),
-              ),
-              IconButton(
-                onPressed: () async {
-                  try {
-                    onSave(await api.saveContent(item.id));
-                  } catch (_) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Could not save this item.')),
+                if (item.tags.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: item.tags.map((tag) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: .12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text('#$tag',
+                            style: TextStyle(
+                                color: accent,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700)),
                       );
-                    }
-                  }
-                },
-                tooltip: item.saved ? 'Remove from saved' : 'Save for later',
-                icon: Icon(
-                  item.saved
-                      ? Icons.bookmark_rounded
-                      : Icons.bookmark_border_rounded,
-                  color: item.saved ? accent : scheme.onSurfaceVariant,
-                ),
-              ),
-              if (item.tags.isNotEmpty)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(999),
+                    }).toList(),
                   ),
-                  child: Text('#${item.tags.first}',
-                      style: TextStyle(
-                          color: accent,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700)),
-                ),
+                ],
+              ],
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  // Show source in compact form when collapsed
+                  if (!expanded)
+                    Expanded(
+                      child: Text(
+                        (item.source.trim().isEmpty) ? '' : '- ${item.source}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: _serif.copyWith(
+                            color: accent.withValues(alpha: .75),
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  // Expand/collapse indicator
+                  IconButton(
+                    onPressed: onTap,
+                    icon: Icon(
+                      expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    tooltip: expanded ? 'Collapse' : 'Expand',
+                  ),
+                  IconButton(
+                    onPressed: () async {
+                      try {
+                        onSave(await api.saveContent(item.id));
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Could not save this item.')),
+                          );
+                        }
+                      }
+                    },
+                    tooltip: item.saved ? 'Remove from saved' : 'Save for later',
+                    icon: Icon(
+                      item.saved
+                          ? Icons.bookmark_rounded
+                          : Icons.bookmark_border_rounded,
+                      color: item.saved ? accent : scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  if (!expanded && item.tags.isNotEmpty)
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text('#${item.tags.first}',
+                          style: TextStyle(
+                              color: accent,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -612,29 +696,13 @@ class _QuoteCard extends StatelessWidget {
         child: InteractiveViewer(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child:
-                Image.network(url, fit: BoxFit.contain, semanticLabel: title),
+            child: Image.network(
+              api.getMediaUrl(url),
+              fit: BoxFit.contain,
+              semanticLabel: title,
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  void _showText(BuildContext context, String text, String title) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 420),
-          child: SingleChildScrollView(child: Text(text)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   }
