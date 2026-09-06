@@ -49,7 +49,6 @@ Future<UpdateManifest?> fetchUpdateManifest() async {
           Uri.parse(ApiClient.baseUrl + '/update/'),
           headers: const <String, String>{
             'Accept': 'application/json',
-            'ngrok-skip-browser-warning': 'true',
           },
         )
         .timeout(const Duration(seconds: 15));

@@ -66,7 +66,7 @@ class ApiClient {
   /// flutter run --dart-define=MURA_API_URL=https://your-api.example.com/api/v1
   static const String _configuredBaseUrl = String.fromEnvironment(
     'MURA_API_URL',
-    defaultValue: 'https://crusader-easing-overlying.ngrok-free.dev/api/v1',
+    defaultValue: 'https://bubaa.pythonanywhere.com/api/v1',
   );
 
   static String get baseUrl =>
@@ -197,8 +197,6 @@ class ApiClient {
     final Map<String, String> headers = <String, String>{
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-      // Required by ngrok free tunnels for non-browser clients.
-      'ngrok-skip-browser-warning': 'true',
     };
     if (body != null) headers['Content-Type'] = 'application/json';
     if (authorized) {
@@ -411,7 +409,6 @@ class ApiClient {
     Future<http.Response> send() async {
       final request = http.MultipartRequest('POST', _uri('/me/avatar/'));
       request.headers['Accept'] = 'application/json';
-      request.headers['ngrok-skip-browser-warning'] = 'true';
       final access = await _ensureAccessToken();
       if (access != null && access.isNotEmpty) {
         request.headers['Authorization'] = 'Bearer $access';
@@ -917,8 +914,6 @@ class ApiClient {
     final http.MultipartRequest request =
         http.MultipartRequest('POST', _uri('/memories/'));
     request.headers['Accept'] = 'application/json';
-    // Required by ngrok free tunnels for non-browser clients.
-    request.headers['ngrok-skip-browser-warning'] = 'true';
     final String? access = await _ensureAccessToken();
     if (access != null && access.isNotEmpty) {
       request.headers['Authorization'] = 'Bearer $access';

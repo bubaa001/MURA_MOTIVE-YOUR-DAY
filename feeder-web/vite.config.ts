@@ -1,15 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Dev server proxies API + uploaded media to the Django backend, so the React
-// app and Django run side by side with zero CORS setup.
+// API calls in src/api.ts hit https://bubaa.pythonanywhere.com/api/v1 directly.
+// These proxies cover leftover relative /api and /media paths during local `npm run dev`.
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5175,
     proxy: {
-      "/api": "http://127.0.0.1:8000",
-      "/media": "http://127.0.0.1:8000"
+      "/api": "https://bubaa.pythonanywhere.com",
+      "/media": "https://bubaa.pythonanywhere.com"
     }
   }
 });

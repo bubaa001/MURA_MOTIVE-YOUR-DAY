@@ -1,6 +1,6 @@
 import type { ContentPayload, Item, LiveItem, Me, ManualSubmission, ReviewStatus } from "./types";
 
-const API = "/api/v1";
+const API = "https://bubaa.pythonanywhere.com/api/v1";
 const ACCESS_KEY = "feeder_access";
 const REFRESH_KEY = "feeder_refresh";
 
