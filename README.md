@@ -33,10 +33,10 @@ Backend (SQLite, zero config):
 ```powershell
 cd backend
 python -m venv .venv
-.\venv\Scripts\pip install -r requirements.txt
-.\venv\Scripts\python manage.py migrate
-.\venv\Scripts\python manage.py bootstrap_dev   # account buba / buba
-.\venv\Scripts\python manage.py runserver
+.\.venv\Scripts\pip install -r requirements.txt
+.\.venv\Scripts\python manage.py migrate
+.\.venv\Scripts\python manage.py bootstrap_dev   # prints the generated dev password
+.\.venv\Scripts\python manage.py runserver
 ```
 
 App:
@@ -70,12 +70,12 @@ build on their next open and download it from GitHub's CDN.
 
 ## Run it in one click
 
-`MURA-Start.bat` starts backend + ngrok + studio. `MURA-Stop.bat` stops them.
+`start-mura.bat` starts backend + ngrok + studio. `stop-mura.bat` stops them.
 
 ## Tests
 
 ```powershell
-cd backend && .\venv\Scripts\python manage.py test
+cd backend && .\.venv\Scripts\python manage.py test
 ```
 
 ## More

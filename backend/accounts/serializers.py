@@ -10,8 +10,17 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "username", "email", "first_name", "display_name", "avatar", "date_joined", "is_staff", "is_superuser")
-        extra_kwargs = {"is_staff": {"read_only": True}, "is_superuser": {"read_only": True}}
+        fields = (
+            "id", "username", "email", "first_name", "display_name", "avatar",
+            "date_joined", "is_staff", "is_superuser", "plan", "push_topic",
+        )
+        extra_kwargs = {
+            "is_staff": {"read_only": True},
+            "is_superuser": {"read_only": True},
+            # plan/push_topic are server-controlled; a billing webhook flips plan.
+            "plan": {"read_only": True},
+            "push_topic": {"read_only": True},
+        }
         read_only_fields = ("id", "username", "date_joined")
 
     def update(self, instance, validated_data):
@@ -43,6 +52,25 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class EmployeeRegisterSerializer(RegisterSerializer):
+    signup_key = serializers.CharField(write_only=True, required=False, allow_blank=True)
+
+    class Meta(RegisterSerializer.Meta):
+        fields = ("username", "email", "password", "signup_key")
+
+    def validate(self, attrs):
+        from django.conf import settings
+        import hmac
+
+        expected = getattr(settings, "EMPLOYEE_SIGNUP_KEY", "")
+        provided = attrs.pop("signup_key", "") or ""
+        if not expected:
+            raise serializers.ValidationError(
+                {"signup_key": "Employee registration is disabled. Ask the owner to create staff accounts."}
+            )
+        if not hmac.compare_digest(expected, provided):
+            raise serializers.ValidationError({"signup_key": "Invalid signup key."})
+        return attrs
+
     def create(self, validated_data):
         return User.objects.create_user(
             username=validated_data["username"],
@@ -58,8 +86,12 @@ class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         identifier = attrs.get(self.username_field)
-        if identifier:
-            user = User.objects.filter(email__iexact=identifier).first()
-            if user is not None:
-                attrs[self.username_field] = user.get_username()
+        if identifier and "@" in identifier:
+            # Prefer an exact-username match first so two accounts that share
+            # an email remain distinguishable at login.
+            if not User.objects.filter(username=identifier).exists():
+                matches = User.objects.filter(email__iexact=identifier).order_by("-is_active", "id")
+                user = matches.first()
+                if user is not None:
+                    attrs[self.username_field] = user.get_username()
         return super().validate(attrs)

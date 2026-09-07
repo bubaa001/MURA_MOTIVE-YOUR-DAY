@@ -1,5 +1,7 @@
 import datetime as dt
 
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,13 +26,17 @@ class PriorityViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # New items land at the bottom of their target day's list; a
         # client-supplied date is honored (contract), defaulting to today.
-        day = serializer.validated_data.get("date") or dt.date.today()
-        last = (
-            Priority.objects.filter(user=self.request.user, date=day)
-            .order_by("-order")
-            .first()
-        )
-        serializer.save(user=self.request.user, date=day, order=(last.order + 1) if last else 0)
+        day = serializer.validated_data.get("date") or timezone.localdate()
+        with transaction.atomic():
+            # select_for_update closes the race where two simultaneous creates
+            # both read the same last.order and duplicate the order number.
+            last = (
+                Priority.objects.select_for_update()
+                .filter(user=self.request.user, date=day)
+                .order_by("-order")
+                .first()
+            )
+            serializer.save(user=self.request.user, date=day, order=(last.order + 1) if last else 0)
 
     @action(detail=False, methods=["post"])
     def reorder(self, request):
@@ -45,7 +51,9 @@ class PriorityViewSet(viewsets.ModelViewSet):
         missing = [i for i in ids if i not in items]
         if missing:
             return Response({"detail": f"Unknown priority ids: {missing}"}, status=400)
-        for index, pid in enumerate(ids):
-            items[pid].order = index
-            items[pid].save(update_fields=["order"])
+        # One transaction: a crash mid-loop previously left a day half-reordered.
+        with transaction.atomic():
+            for index, pid in enumerate(ids):
+                items[pid].order = index
+                items[pid].save(update_fields=["order"])
         return Response({"reordered": len(ids)})

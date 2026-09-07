@@ -48,7 +48,13 @@ class ContentItem(models.Model):
 
     class Meta:
         ordering = ("id",)
-        indexes = [models.Index(fields=["type"]), models.Index(fields=["status"])]
+        indexes = [
+            models.Index(fields=["type"]),
+            models.Index(fields=["status"]),
+            models.Index(fields=("type", "status"), name="content_type_status_idx"),
+            # Composite that every tag-filtered listing actually needs.
+            models.Index(fields=("status", "type"), name="content_status_type_idx"),
+        ]
 
     def __str__(self) -> str:
         snippet = self.text[:60] + ("…" if len(self.text) > 60 else "")

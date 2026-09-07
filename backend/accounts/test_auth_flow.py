@@ -116,3 +116,41 @@ class JwtAuthFlowTests(APITestCase):
         body = self.client.get("/api/v1/me/").json()
         self.assertEqual(body["username"], "walker")          # read-only field ignored
         self.assertNotEqual(body["id"], 99999)
+
+
+class EmployeeRegistrationGateTests(APITestCase):
+    """/auth/register/employee/ must be gated by EMPLOYEE_SIGNUP_KEY."""
+
+    def _register_employee(self, signup_key=None):
+        payload = {"username": "writer1", "email": "w@mura.app", "password": PASSWORD}
+        if signup_key is not None:
+            payload["signup_key"] = signup_key
+        return self.client.post("/api/v1/auth/register/employee/", payload, format="json")
+
+    def test_registration_disabled_without_configured_key(self):
+        with self.settings(EMPLOYEE_SIGNUP_KEY=""):
+            res = self._register_employee()
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("signup_key", res.json())
+            from django.contrib.auth import get_user_model
+
+            self.assertFalse(
+                get_user_model().objects.filter(username="writer1").exists(),
+                "no staff account may be created when the gate is unset",
+            )
+
+    def test_registration_rejects_wrong_key(self):
+        with self.settings(EMPLOYEE_SIGNUP_KEY="correct-horse"):
+            res = self._register_employee(signup_key="wrong")
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("signup_key", res.json())
+
+    def test_registration_with_correct_key_creates_staff(self):
+        with self.settings(EMPLOYEE_SIGNUP_KEY="correct-horse"):
+            res = self._register_employee(signup_key="correct-horse")
+            self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
+            from django.contrib.auth import get_user_model
+
+            user = get_user_model().objects.get(username="writer1")
+            self.assertTrue(user.is_staff)
+            self.assertFalse(user.is_superuser)

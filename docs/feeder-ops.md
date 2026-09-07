@@ -9,10 +9,12 @@ everything, and the daily routine.
 
 | Role | Account | Can do |
 |---|---|---|
-| **Owner** (you) | `buba` (superuser) | Everything: write, review, **publish instantly**, edit live content, archive, restore, delete |
-| **Reviewer** | any staff account (`manage.py create_employee`) | Write candidates, review queue (approve/reject), edit text, archive (unpublish), delete. **Cannot force content live** — only the owner publishes |
+| **Owner** (you) | `buba` (superuser) | Everything: write, review, **sync live**, edit live content, archive, restore, delete |
+| **Reviewer** | any staff account | Write candidates, review queue (approve/reject), **edit candidates**, archive, delete. **Cannot force content live** — sync is superuser-only |
 
-All studio access requires a staff login. The mobile app itself stays
+All studio access requires a staff login. New staff register at the login page
+with the owner's **signup key** (`EMPLOYEE_SIGNUP_KEY` in the backend `.env`;
+registration is disabled when it's unset). The mobile app itself stays
 read-only for content: users read what the studio publishes.
 
 ## Content lifecycle
@@ -29,22 +31,29 @@ Write ──► Review ──► Publish ──► Maintain ──► Retire
     motion quotes, words of the day, spiritual insights
 ```
 
-- **Write**: Feed tab → pick a topic → write it. "Send to review" queues it;
-  the owner can also "Publish now" (goes live instantly).
+- **Write**: Feed tab → pick a topic → write it. "Send to review" queues it
+  (a typo is no longer delete-and-retype — candidates have an **Edit** button).
 - **Review**: Queue/Review tabs → approve or reject (arrow keys on a focused
-  card). Approved items wait for **Sync approved → main app**.
+  card). Approved items wait for **Sync approved → main app** (owner only;
+  the button is hidden for regular staff). The item-level **Sync** action
+  publishes one candidate at a time.
 - **Live Content** tab: everything the app shows, with full control:
   search, filter by type/status, select many, then **Archive / Draft /
   Publish / Delete**; or open any item to edit text, source, year, tags,
-  artwork (upload or URL). Archived items stay in the studio, hidden from
+  artwork (upload or URL) — type too. Lists paginate with **Load more**
+  and show the total count. Archived items stay in the studio, hidden from
   the app, and can be restored by the owner.
 
 ## Starting everything
 
-**One click:** double-click `MURA-Start.bat` on the desktop (or
-`C:\mura\start-mura.bat`). It opens three titled windows — **MURA-Backend**,
-**MURA-ngrok**, **MURA-Studio** — and the studio in your browser.
-Double-click `MURA-Stop.bat` to shut everything down.
+**One click:** double-click `start-mura.bat` (or `C:\mura\start-mura.bat`).
+It opens titled windows — **MURA-Backend**, **MURA-ngrok**, **MURA-Studio** —
+and the studio in your browser. `stop-mura.bat` shuts everything down.
+
+> Production note: the live backend is on PythonAnywhere
+> (`https://bubaa.pythonanywhere.com`) — the studio talks to it directly; the
+> ngrok/Docker flow below is LOCAL DEV only. Production ops live in
+> `docs/runbook.md`.
 
 ### Option A — Docker (one command, includes ngrok tunnel)
 
@@ -67,9 +76,9 @@ docker compose up -d --build
 ```powershell
 # terminal 1 — backend (SQLite works with no .env)
 cd C:\mura\backend
-.\venv\Scripts\python manage.py migrate
-.\venv\Scripts\python manage.py bootstrap_dev
-.\venv\Scripts\python manage.py runserver 0.0.0.0:8000
+.\.venv\Scripts\python manage.py migrate
+.\.venv\Scripts\python manage.py bootstrap_dev   # prints a generated dev password
+.\.venv\Scripts\python manage.py runserver 0.0.0.0:8000
 
 # terminal 2 — TheFeeder studio
 cd C:\mura\feeder-web
@@ -108,17 +117,18 @@ hands it to the Android installer.
 2. Publish it from the backend:
    ```powershell
    cd C:\mura\backend
-   .\venv\Scripts\python manage.py publish_release ^
+   .\.venv\Scripts\python manage.py publish_release ^
        --apk ..\flutter_app\build\app\outputs\flutter-apk\app-release.apk ^
        --version-name 1.2.0 --version-code 3 ^
        --notes "What's new: ..."
    ```
 3. Installed apps detect it on their next open and offer the update.
 
-Notes: the APK is served from the backend over the ngrok tunnel, so the
-backend must be running for updates to download. `version-code` must be higher
-than what's installed (it comes from the `+N` in pubspec). Remove a release
-(`manage.py shell`, delete the `Release`) to stop offering it.
+Notes: the APK is hosted on **GitHub Releases** (the backend `/update/`
+manifest just points at it), so updates download even when the local backend
+is off. `version-code` must be higher than what's installed (it comes from
+the `+N` in pubspec). Remove a release (`manage.py shell`, delete the
+`Release`) to stop offering it.
 
 ## Safety rules
 

@@ -54,10 +54,45 @@ def send_event(
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status_code = resp.status
             data = json.loads(resp.read().decode("utf-8"))
     except Exception as exc:  # network/HTTP/parse — all failures are equal here
         raise SignoError(str(exc)) from exc
-    if resp.status != 202:
-        raise SignoError(f"unexpected status {resp.status}")
+    if status_code != 202:
+        raise SignoError(f"unexpected status {status_code}")
     logger.info("signo event %s delivered to %s device(s)", data.get("eventId"), data.get("delivered"))
     return data
+
+
+def user_namespace(user) -> str | None:
+    """Personal push channel for one account, or None when unconfigured.
+
+    Personal events (habit streaks, goal wins, reminders) must go here —
+    the global SIGNO_NAMESPACE reaches *every* subscriber's device, so
+    pushing a habit name there leaked it to all users. A user only
+    receives personal pushes once their device subscribes to this topic.
+    """
+    if getattr(user, "push_topic", ""):
+        return user.push_topic
+    template = getattr(settings, "SIGNO_USER_NAMESPACE_TEMPLATE", "")
+    namespace = getattr(settings, "SIGNO_NAMESPACE", "")
+    if template and namespace:
+        return template.format(namespace=namespace, user_id=user.id)
+    return None
+
+
+def send_user_event(
+    user,
+    title: str,
+    body: str = "",
+    *,
+    priority: str = "default",
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Best-effort push to one user's personal topic. Returns None when the
+    user has no personal topic configured (never falls back to the global
+    namespace — that would broadcast private data to every device)."""
+    ns = user_namespace(user)
+    if not ns:
+        return None
+    return send_event(title, body, namespace=ns, priority=priority, payload=payload)

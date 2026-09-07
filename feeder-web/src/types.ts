@@ -13,6 +13,11 @@ export interface Item {
   review_status: ReviewStatus;
   synced: boolean;
   created_at: string;
+  updated_at?: string;
+  note?: string;
+  submitted_by_name?: string;
+  reviewed_by_name?: string;
+  reviewed_at?: string | null;
 }
 
 export interface ManualSubmission {

@@ -81,6 +81,8 @@ class User {
     this.displayName = '',
     this.dateJoined = '',
     this.avatar,
+    this.plan = 'free',
+    this.pushTopic = '',
   });
 
   factory User.fromJson(Map<String, dynamic> json) => User(
@@ -91,6 +93,8 @@ class User {
         displayName: _toString(json['display_name']),
         dateJoined: _toString(json['date_joined']),
         avatar: _toStringOrNull(json['avatar']),
+        plan: _toString(json['plan'], fallback: 'free'),
+        pushTopic: _toString(json['push_topic']),
       );
 
   final int id;
@@ -100,6 +104,12 @@ class User {
   final String displayName;
   final String dateJoined;
   final String? avatar;
+
+  /// Subscription tier from /me/: "free" | "premium".
+  final String plan;
+
+  /// Server-assigned push topic (empty when unset), for upcoming premium work.
+  final String pushTopic;
 
   String get effectiveName => displayName.isNotEmpty ? displayName : username;
 
@@ -298,6 +308,46 @@ class HabitHistory {
         'streaks': <String, dynamic>{
           'current': currentStreak,
           'best': bestStreak,
+        },
+      };
+}
+
+/// Envelope of `GET /habits/history_batch/?days=` :
+/// `{days_span, habits: {"<habit_id>": {days, streaks}}}`. One call replaces
+/// a per-habit loop of `GET /habits/{id}/history/`.
+class HabitHistoryBatch {
+  const HabitHistoryBatch({
+    this.daysSpan = 0,
+    this.histories = const <int, HabitHistory>{},
+  });
+
+  factory HabitHistoryBatch.fromJson(Map<String, dynamic> json) {
+    final Map<int, HabitHistory> parsed = <int, HabitHistory>{};
+    final dynamic rawHabits = json['habits'];
+    if (rawHabits is Map<String, dynamic>) {
+      rawHabits.forEach((String key, dynamic value) {
+        final int? id = int.tryParse(key);
+        if (id != null && value is Map<String, dynamic>) {
+          parsed[id] = HabitHistory.fromJson(value);
+        }
+      });
+    }
+    return HabitHistoryBatch(
+      daysSpan: _toInt(json['days_span']),
+      histories: parsed,
+    );
+  }
+
+  final int daysSpan;
+
+  /// habitId -> its {days, streaks} history.
+  final Map<int, HabitHistory> histories;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'days_span': daysSpan,
+        'habits': <String, dynamic>{
+          for (final MapEntry<int, HabitHistory> entry in histories.entries)
+            '${entry.key}': entry.value.toJson(),
         },
       };
 }

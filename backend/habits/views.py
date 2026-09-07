@@ -1,12 +1,13 @@
 import datetime as dt
 
-from django.db.models import Prefetch
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from reminders.models import NotificationLog
-from reminders.signo import SignoError, send_event
+from reminders.signo import send_user_event
 
 from .models import Habit, HabitLog
 from .serializers import HabitSerializer, HabitToggleSerializer, HabitWriteSerializer
@@ -16,24 +17,29 @@ STREAK_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
 
 
 def _celebrate_streak(user, habit: Habit, streak: int) -> None:
-    """Fire a Signo push when a streak hits a milestone. Best-effort: a push
-    failure must never fail the toggle itself."""
+    """Record a streak milestone in the in-app feed and, best-effort, push it.
+    The NotificationLog write must survive a Signo failure, so it gets its
+    own try block and happens first."""
     if streak not in STREAK_MILESTONES:
         return
+    title = f"{streak}-day streak: {habit.name}"
+    body = "Keep the chain alive. Discipline compounds."
+    NotificationLog.objects.create(
+        user=user,
+        title=title,
+        body=body,
+        kind="streak_milestone",
+    )
     try:
-        send_event(
-            title=f"{streak}-day streak: {habit.name}",
-            body="Keep the chain alive. Discipline compounds.",
+        send_user_event(
+            user,
+            title,
+            body,
             priority="default",
             payload={"kind": "streak_milestone", "habitId": habit.id, "streak": streak},
         )
-        NotificationLog.objects.create(
-            user=user,
-            title=f"{streak}-day streak: {habit.name}",
-            body="Keep the chain alive. Discipline compounds.",
-            kind="streak_milestone",
-        )
-    except SignoError:
+    except Exception:
+        # Push is best-effort; the milestone is already recorded above.
         pass
 
 
@@ -48,9 +54,11 @@ class HabitViewSet(viewsets.ModelViewSet):
         return HabitSerializer
 
     def get_queryset(self):
-        qs = Habit.objects.filter(user=self.request.user).prefetch_related(
-            Prefetch("logs", queryset=HabitLog.objects.filter(completed=True))
-        )
+        # Streak/rate math re-queries via habit.logs.filter(...), which clones
+        # the related manager — a Prefetch cache here is silently discarded and
+        # doubles the query load, so it was removed. The per-day map is fetched
+        # directly in list_batches/history/today instead.
+        qs = Habit.objects.filter(user=self.request.user)
         is_active = self.request.query_params.get("is_active")
         if is_active is not None:
             qs = qs.filter(is_active=is_active.lower() in {"1", "true"})
@@ -82,7 +90,10 @@ class HabitViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def today(self, request):
         """/habits/today/ -> today's checklist with completion state."""
-        day = self._parse_date(request) or dt.date.today()
+        # All date math uses the configured TIME_ZONE (timezone.localdate).
+        # dt.date.today() is server-UTC and made check-ins land on the wrong
+        # calendar day whenever UTC "today" differs from the user's today.
+        day = self._parse_date(request) or timezone.localdate()
         logs = {
             log.habit_id: log for log in HabitLog.objects.filter(habit__user=request.user, date=day)
         }
@@ -110,16 +121,26 @@ class HabitViewSet(viewsets.ModelViewSet):
         habit = self.get_object()
         payload = HabitToggleSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
-        day = payload.validated_data.get("date") or dt.date.today()
+        day = payload.validated_data.get("date") or timezone.localdate()
+        # A future date would let a client pre-log tomorrow and inflate streaks.
+        if day > timezone.localdate():
+            return Response(
+                {"detail": "Cannot check in for a future date."},
+                status=400,
+            )
 
-        log, created = HabitLog.objects.get_or_create(
-            habit=habit, date=day, defaults={"completed": True}
-        )
-        if not created:
-            log.completed = not log.completed
-            log.save(update_fields=["completed"])
+        # Atomic read-modify-write: a double-tap or two racing requests
+        # previously hit the uniq_habit_day constraint as a 500 or lost one
+        # toggle. select_for_update serializes the flip on the row.
+        with transaction.atomic():
+            log, created = HabitLog.objects.select_for_update().get_or_create(
+                habit=habit, date=day, defaults={"completed": True}
+            )
+            if not created:
+                log.completed = not log.completed
+                log.save(update_fields=["completed"])
 
-        today_log = HabitLog.objects.filter(habit=habit, date=dt.date.today()).first()
+        today_log = HabitLog.objects.filter(habit=habit, date=timezone.localdate()).first()
         stats = habit_streaks(habit)
 
         if log.completed:
@@ -146,13 +167,13 @@ class HabitViewSet(viewsets.ModelViewSet):
             days = min(int(request.query_params.get("days", 180)), 365 * 2)
         except ValueError:
             days = 180
-        since = dt.date.today() - dt.timedelta(days=days - 1)
+        today = timezone.localdate()
+        since = today - dt.timedelta(days=days - 1)
         done = set(
             habit.logs.filter(completed=True, date__gte=since).values_list("date", flat=True)
         )
         out = []
         day = since
-        today = dt.date.today()
         while day <= today:
             out.append({"date": day.isoformat(), "completed": day in done})
             day += dt.timedelta(days=1)
@@ -167,6 +188,44 @@ class HabitViewSet(viewsets.ModelViewSet):
                 },
             }
         )
+
+    @action(detail=False, methods=["get"])
+    def history_batch(self, request):
+        """/habits/history_batch/?days=180 -> per-habit history maps in ONE call.
+
+        Replaces the mobile client's per-habit /history/ loop (one request
+        per habit per tab visit) with a single request for all habits.
+        """
+        try:
+            days = min(int(request.query_params.get("days", 180)), 365 * 2)
+        except ValueError:
+            days = 180
+        today = timezone.localdate()
+        since = today - dt.timedelta(days=days - 1)
+        habits = list(self.get_queryset())
+        done: dict[int, set[dt.date]] = {habit.id: set() for habit in habits}
+        rows = (
+            HabitLog.objects.filter(
+                habit__in=habits, completed=True, date__gte=since
+            ).values_list("habit_id", "date")
+        )
+        for habit_id, date in rows:
+            done[habit_id].add(date)
+
+        out = {}
+        for habit in habits:
+            streaks = habit_streaks(habit)
+            out[str(habit.id)] = {
+                "days": [
+                    {"date": (since + dt.timedelta(days=o)).isoformat(), "completed": (since + dt.timedelta(days=o)) in done[habit.id]}
+                    for o in range((today - since).days + 1)
+                ],
+                "streaks": {
+                    "current": streaks["current_streak"],
+                    "best": streaks["best_streak"],
+                },
+            }
+        return Response({"days_span": days, "habits": out})
 
     @action(detail=False, methods=["get"])
     def heatmap_data(self, request):

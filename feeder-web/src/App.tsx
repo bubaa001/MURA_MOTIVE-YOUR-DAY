@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLoggedIn, listItems, reviewItem, bulkReview, syncApproved, submitManually, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, testPushCampaign, deletePushCampaign } from "./api";
-import type { PushCampaign, PushPayload } from "./api";
+import { isLoggedIn, listItems, fetchNextPage, reviewItem, bulkReview, syncApproved, submitManually, updateCandidate, setContentStatus, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, testPushCampaign, deletePushCampaign } from "./api";
+import type { CandidatePatch, PushCampaign, PushPayload } from "./api";
 import Login from "./Login";
 import type { ContentPayload, ContentStatus, Item, ItemType, LiveItem, ManualSubmission, ReviewStatus } from "./types";
 
@@ -30,11 +30,16 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [error, setError] = useState("");
   const [syncMsg, setSyncMsg] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
+  const [isSuperuser, setIsSuperuser] = useState(false);
+
+  useEffect(() => {
+    me().then((profile) => setIsSuperuser(profile.is_superuser)).catch(() => {});
+  }, []);
 
   const refreshPending = useCallback(async () => {
     try {
       const pending = await listItems("pending");
-      setPendingCount(pending.length);
+      setPendingCount(pending.count);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -48,12 +53,22 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     setSyncMsg("Syncing…");
     try {
       const res = await syncApproved();
-      setSyncMsg(res.submitted + " submitted · " + res.synced + " newly synced");
+      const results = res.results ?? [];
+      const wentLive = results.filter((r) => r.created).length;
+      const skipped = results.filter((r) => r.ok && !r.created).length;
+      const failed = results.filter((r) => !r.ok);
+      let summary = res.submitted + " submitted · " + wentLive + " went live";
+      if (skipped > 0) summary += " · " + skipped + " duplicate(s) skipped";
+      if (failed.length > 0) {
+        const details = failed.map((r) => "item #" + r.item_id + ": " + (r.error || "failed")).join("; ");
+        summary += " · " + failed.length + " failed — " + details;
+      }
+      setSyncMsg(summary);
       refreshPending();
     } catch (err) {
       setSyncMsg("Sync failed: " + (err instanceof Error ? err.message : String(err)));
     }
-    setTimeout(() => setSyncMsg(""), 6000);
+    setTimeout(() => setSyncMsg(""), 8000);
   }
 
   return (
@@ -69,7 +84,9 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           {(Object.keys(NAV_LABELS) as StudioPage[]).map((entry) => <button key={entry} className={page === entry ? "active" : ""} onClick={() => setPage(entry)}>{NAV_LABELS[entry]}</button>)}
         </nav>
         <button onClick={onLogout}>Sign out</button>
-        <button className="primary" onClick={handleSync}>Sync approved → main app</button>
+        {isSuperuser
+          ? <button className="primary" onClick={handleSync}>Sync approved → main app</button>
+          : <span className="muted small" title="Syncing content live is restricted to the owner's account.">Only the owner can sync content live</span>}
       </header>
       {page !== "feed" && <div className="studio-intro">
         <div><p className="eyebrow">Human content studio</p><h2>Shape the next MURA moment.</h2><p className="muted">Write, review, and publish content without automated generation.</p></div>
@@ -99,7 +116,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
 function FeedHome({ onAdd }: { onAdd: (type: ItemType) => void }) {
   const [pending, setPending] = useState(0);
   useEffect(() => {
-    listItems("pending").then((items) => setPending(items.length)).catch(() => {});
+    listItems("pending").then((res) => setPending(res.count)).catch(() => {});
   }, []);
   return <section className="feed-home">
     <div className="feed-hero">
@@ -239,12 +256,24 @@ function ManualFeedForm({ initialType, onBack, onSubmitted }: { initialType?: It
 function CandidatesPane({ tab, onChanged }: { tab: Tab; onChanged?: () => void }) {
   const [activeTab, setActiveTab] = useState<Tab>(tab);
   const [items, setItems] = useState<Item[]>([]);
+  const [count, setCount] = useState(0);
+  const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+  const [editing, setEditing] = useState<Item | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      setItems(await listItems(activeTab));
+      const res = await listItems(activeTab);
+      setItems(res.items);
+      setCount(res.count);
+      setNext(res.next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -252,24 +281,75 @@ function CandidatesPane({ tab, onChanged }: { tab: Tab; onChanged?: () => void }
 
   useEffect(() => { load(); }, [load]);
 
+  function flash(message: string) {
+    setMsg(message);
+    setTimeout(() => setMsg(""), 4000);
+  }
+
+  async function loadMore() {
+    if (!next || loadingMore) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const res = await fetchNextPage<Item>(next);
+      setItems((prev) => {
+        const seen = new Set(prev.map((i) => i.id));
+        return [...prev, ...res.items.filter((i) => !seen.has(i.id))];
+      });
+      setCount(res.count);
+      setNext(res.next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   async function decide(item: Item, reviewStatus: ReviewStatus) {
-    await reviewItem(item.id, reviewStatus);
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
-    onChanged?.();
+    try {
+      await reviewItem(item.id, reviewStatus);
+      setError("");
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setCount((c) => Math.max(0, c - 1));
+      onChanged?.();
+    } catch (err) {
+      setError("Could not mark item #" + item.id + " as " + reviewStatus + ": " + (err instanceof Error ? err.message : String(err)));
+    }
   }
 
   async function approveAllVisible() {
     const targets = items.map((i) => i.id);
     if (!targets.length) return;
-    await bulkReview(targets, "approved");
-    await load();
-    onChanged?.();
+    try {
+      await bulkReview(targets, "approved");
+      setError("");
+      flash("Approved " + targets.length + " item(s).");
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setError("Bulk approve failed: " + (err instanceof Error ? err.message : String(err)));
+    }
   }
 
   async function remove(item: Item) {
     if (!window.confirm("Delete this candidate from the queue?")) return;
-    await deleteCandidate(item.id);
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
+    try {
+      await deleteCandidate(item.id);
+      setError("");
+      setItems((prev) => prev.filter((i) => i.id !== item.id));
+      setCount((c) => Math.max(0, c - 1));
+      onChanged?.();
+    } catch (err) {
+      setError("Could not delete item #" + item.id + ": " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  async function saveEdit(patch: CandidatePatch) {
+    if (!editing) return;
+    await updateCandidate(editing.id, patch);
+    setEditing(null);
+    flash("Saved changes to item #" + editing.id + ".");
+    await load();
     onChanged?.();
   }
 
@@ -284,10 +364,13 @@ function CandidatesPane({ tab, onChanged }: { tab: Tab; onChanged?: () => void }
             </button>
           ))}
         </div>
+        <span className="queue-label">{count} {activeTab}</span>
         {activeTab === "pending" && (
           <button onClick={approveAllVisible} disabled={!items.length}>Approve all shown</button>
         )}
       </div>
+      {error && <div className="error banner" role="alert">{error}</div>}
+      {msg && <div className="success banner" role="status">{msg}</div>}
       {loading ? (
         <p className="muted">Loading…</p>
       ) : items.length === 0 ? (
@@ -295,9 +378,19 @@ function CandidatesPane({ tab, onChanged }: { tab: Tab; onChanged?: () => void }
       ) : (
         <div className="items">
           {items.map((item) => (
-            <ItemCard key={item.id} item={item} mode={activeTab} onDecide={decide} onDelete={remove} />
+            <ItemCard key={item.id} item={item} mode={activeTab} onDecide={decide} onDelete={remove} onEdit={setEditing} />
           ))}
         </div>
+      )}
+      {next && (
+        <div className="load-more">
+          <button className="secondary" onClick={loadMore} disabled={loadingMore || loading}>
+            {loadingMore ? "Loading…" : "Load more — showing " + items.length + " of " + count}
+          </button>
+        </div>
+      )}
+      {editing && (
+        <CandidateEditModal item={editing} onClose={() => setEditing(null)} onSave={saveEdit} />
       )}
     </div>
   );
@@ -307,12 +400,14 @@ function ItemCard({
   item,
   mode,
   onDecide,
-  onDelete
+  onDelete,
+  onEdit
 }: {
   item: Item;
   mode: Tab;
-  onDecide: (item: Item, status: ReviewStatus) => void;
+  onDecide: (item: Item, status: ReviewStatus) => Promise<void>;
   onDelete?: (item: Item) => void;
+  onEdit?: (item: Item) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -320,10 +415,17 @@ function ItemCard({
     ref.current?.classList.add(kind === "approve" ? "flash-ok" : "flash-no");
   }
 
+  function decide(reviewStatus: ReviewStatus, kind: "approve" | "reject") {
+    flash(kind); // instant feedback; undone if the request fails
+    Promise.resolve(onDecide(item, reviewStatus)).catch(() => {
+      ref.current?.classList.remove("flash-ok", "flash-no");
+    });
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (mode !== "pending") return;
-    if (e.key === "ArrowRight") { e.preventDefault(); flash("approve"); onDecide(item, "approved"); }
-    if (e.key === "ArrowLeft") { e.preventDefault(); flash("reject"); onDecide(item, "rejected"); }
+    if (e.key === "ArrowRight") { e.preventDefault(); decide("approved", "approve"); }
+    if (e.key === "ArrowLeft") { e.preventDefault(); decide("rejected", "reject"); }
   }
 
   return (
@@ -340,18 +442,110 @@ function ItemCard({
       {item.image && <img className="item-image" src={item.image} alt="" />}
       <div className="meta">
         <span>{item.source}</span>
+        {item.year != null && <span className="muted">{item.year}</span>}
         {item.tags.length > 0 && <span className="tags">{item.tags.join(", ")}</span>}
       </div>
       <div className="actions">
         {mode === "pending" && (
           <>
-            <button className="good" onClick={() => onDecide(item, "approved")}>Approve →</button>
-            <button className="bad" onClick={() => onDecide(item, "rejected")}>← Reject</button>
+            <button className="good" onClick={() => decide("approved", "approve")}>Approve →</button>
+            <button className="bad" onClick={() => decide("rejected", "reject")}>← Reject</button>
           </>
         )}
+        {onEdit && <button onClick={() => onEdit(item)}>Edit</button>}
         {onDelete && <button className="bad" onClick={() => onDelete(item)}>Delete</button>}
       </div>
       {mode === "pending" && <p className="muted small hint">Focus this card, then use ← reject · → approve</p>}
+    </div>
+  );
+}
+
+function CandidateEditModal({
+  item,
+  onClose,
+  onSave
+}: {
+  item: Item;
+  onClose: () => void;
+  onSave: (patch: CandidatePatch) => Promise<void>;
+}) {
+  const [type, setType] = useState<ItemType>(item.type);
+  const [text, setText] = useState(item.text);
+  const [source, setSource] = useState(item.source ?? "");
+  const [year, setYear] = useState(item.year != null ? String(item.year) : "");
+  const [tags, setTags] = useState((item.tags ?? []).join(", "));
+  const [imageUrl, setImageUrl] = useState(item.image_url ?? "");
+  const [note, setNote] = useState(item.note ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit() {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({
+        type,
+        text: text.trim(),
+        source: source.trim(),
+        year: year ? Number(year) : null,
+        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        image_url: imageUrl.trim(),
+        note: note.trim()
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="editor-modal" role="dialog" aria-modal="true" aria-labelledby="candidate-edit-title">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Candidate</p>
+            <h2 id="candidate-edit-title">Edit item #{item.id}</h2>
+          </div>
+          <button className="back-link" onClick={onClose}>← Close</button>
+        </div>
+
+        <label>Type</label>
+        <select value={type} onChange={(e) => setType(e.target.value as ItemType)}>
+          {(Object.keys(CONTENT_TYPE_LABELS) as ItemType[]).map((t) => <option key={t} value={t}>{CONTENT_TYPE_LABELS[t]}</option>)}
+        </select>
+
+        <label>Text <span aria-hidden="true">*</span></label>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={10000} rows={6} placeholder="Write the item exactly as it should appear…" />
+
+        <div className="editor-grid">
+          <div>
+            <label>Source <span className="muted">(optional)</span></label>
+            <input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Author, book, or scripture ref" />
+          </div>
+          <div>
+            <label>Year <span className="muted">(optional)</span></label>
+            <input type="number" min="0" max="2100" value={year} onChange={(e) => setYear(e.target.value)} placeholder="1937" />
+          </div>
+        </div>
+
+        <label>Tags <span className="muted">(comma separated)</span></label>
+        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="discipline, faith, resilience" />
+
+        <label>Artwork URL <span className="muted">(optional)</span></label>
+        <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/image.jpg" />
+
+        <label>Review note <span className="muted">(optional)</span></label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} rows={2} placeholder="Why this candidate matters — visible to other reviewers…" />
+
+        {error && <div className="error form-message" role="status">{error}</div>}
+
+        <div className="form-actions">
+          <button className="primary" disabled={busy || !text.trim()} onClick={submit}>{busy ? "Saving…" : "Save changes"}</button>
+          <button onClick={onClose}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -377,7 +571,10 @@ const CONTENT_STATUS_LABELS: Record<ContentStatus, string> = {
 
 function ContentManager() {
   const [items, setItems] = useState<LiveItem[]>([]);
+  const [count, setCount] = useState(0);
+  const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
   const [filterType, setFilterType] = useState<"" | ItemType>("");
@@ -393,11 +590,14 @@ function ContentManager() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await listContent({
+      const res = await listContent({
         type: filterType || undefined,
         status: filterStatus || undefined,
         q: q || undefined
-      }));
+      });
+      setItems(res.items);
+      setCount(res.count);
+      setNext(res.next);
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -418,6 +618,25 @@ function ContentManager() {
   }
 
   function refresh() { setTick((t) => t + 1); }
+
+  async function loadMore() {
+    if (!next || loadingMore) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const res = await fetchNextPage<LiveItem>(next);
+      setItems((prev) => {
+        const seen = new Set(prev.map((i) => i.id));
+        return [...prev, ...res.items.filter((i) => !seen.has(i.id))];
+      });
+      setCount(res.count);
+      setNext(res.next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -445,6 +664,28 @@ function ContentManager() {
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function archiveOne(item: LiveItem) {
+    try {
+      await bulkContent([item.id], "archive");
+      setError("");
+      flash("Archived item #" + item.id + ".");
+      refresh();
+    } catch (err) {
+      setError("Could not archive item #" + item.id + ": " + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+
+  async function publishOne(item: LiveItem) {
+    try {
+      await setContentStatus(item.id, "published");
+      setError("");
+      flash("Published item #" + item.id + ".");
+      refresh();
+    } catch (err) {
+      setError("Could not publish item #" + item.id + ": " + (err instanceof Error ? err.message : String(err)));
     }
   }
 
@@ -511,6 +752,7 @@ function ContentManager() {
           <span><strong>{published}</strong> live</span>
           <span><strong>{drafts}</strong> draft</span>
           <span><strong>{archived}</strong> archived</span>
+          <span><strong>{count}</strong> item{count === 1 ? "" : "s"} total</span>
           <button className="primary" onClick={() => setCreating(true)}>+ New item</button>
         </div>
       </div>
@@ -570,14 +812,21 @@ function ContentManager() {
               <span className="c-actions">
                 <button onClick={() => setEditing(item)}>Edit</button>
                 {item.status === "published"
-                  ? <button onClick={() => runBulk(["archive"].length ? (selected.has(item.id) ? "archive" : "archive") : "archive")}>Archive</button>
-                  : item.status === "archived"
-                    ? (isSuperuser ? <button onClick={() => bulkContent([item.id], "restore").then(refresh).catch((err) => setError(err.message))}>Publish</button> : <span className="muted small">archived</span>)
-                    : <button onClick={() => bulkContent([item.id], "published" as never).catch(() => undefined)}>—</button>}
+                  ? <button onClick={() => archiveOne(item)}>Archive</button>
+                  : isSuperuser
+                    ? <button className="good" onClick={() => publishOne(item)} title="Publish now (owner only)">Publish</button>
+                    : <span className="muted small">{CONTENT_STATUS_LABELS[item.status].toLowerCase()}</span>}
                 <button className="bad" onClick={() => handleDelete(item)}>Delete</button>
               </span>
             </div>
           ))}
+        {next && (
+          <div className="load-more">
+            <button className="secondary" onClick={loadMore} disabled={loadingMore || loading}>
+              {loadingMore ? "Loading…" : "Load more — showing " + items.length + " of " + count}
+            </button>
+          </div>
+        )}
       </div>
 
       {(editing || creating) && (
@@ -660,7 +909,7 @@ function ContentEditorModal({
         </div>
 
         <label>Type</label>
-        <select value={type} onChange={(e) => setType(e.target.value as ItemType)} disabled={isEdit}>
+        <select value={type} onChange={(e) => setType(e.target.value as ItemType)}>
           {(Object.keys(CONTENT_TYPE_LABELS) as ItemType[]).map((t) => <option key={t} value={t}>{CONTENT_TYPE_LABELS[t]}</option>)}
         </select>
 
@@ -894,7 +1143,7 @@ function PushManager() {
             </>
           )}
         </div>
-        <p className="muted small">"Send now" delivers to every device immediately. Daily/Weekly sends fire automatically when the backend scheduler runs.</p>
+        <p className="muted small">"Send now" delivers to every device immediately. Daily/Weekly campaigns send only when the server's scheduled task runs — until it fires, use the "Send" button on a campaign to deliver it reliably.</p>
       </form>
 
       <h3 className="push-heading">Campaigns</h3>

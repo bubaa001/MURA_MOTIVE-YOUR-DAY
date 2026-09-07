@@ -5,6 +5,8 @@ priorities or reminders - lists come back empty and detail reads 404.
 """
 import datetime as dt
 
+from django.utils import timezone
+
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -30,7 +32,7 @@ class UserIsolationTests(APITestCase):
             user=self.alice, title="Alice entry", body="secret musings"
         )
         self.memory = Memory.objects.create(
-            user=self.alice, title="Alice memory", date=dt.date.today()
+            user=self.alice, title="Alice memory", date=timezone.localdate()
         )
         self.priority = Priority.objects.create(user=self.alice, title="Alice priority")
         self.reminder = Reminder.objects.create(

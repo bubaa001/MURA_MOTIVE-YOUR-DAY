@@ -144,6 +144,7 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
         search: q.isEmpty ? null : q,
         sort: _sort,
         status: _status,
+        pageSize: 200,
       );
       final items = stories
           .map((story) => JournalEntry(
@@ -611,6 +612,18 @@ class _EntryCard extends StatelessWidget {
                       width: double.infinity,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : Container(
+                              height: 170,
+                              color: pal.field,
+                              alignment: Alignment.center,
+                              child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: pal.amber)),
+                            ),
                     ),
                   ),
                 ),
@@ -765,8 +778,17 @@ class _EntryCard extends StatelessWidget {
         child: InteractiveViewer(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child:
-                Image.network(api.getMediaUrl(url), fit: BoxFit.contain, semanticLabel: title),
+            child: Image.network(
+              api.getMediaUrl(url),
+              fit: BoxFit.contain,
+              semanticLabel: title,
+              errorBuilder: (_, __, ___) => Container(
+                height: 120,
+                alignment: Alignment.center,
+                child: Icon(Icons.broken_image_outlined,
+                    color: MuraPalette.of(context).textDim, size: 32),
+              ),
+            ),
           ),
         ),
       ),

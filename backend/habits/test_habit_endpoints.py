@@ -2,6 +2,8 @@
 import datetime as dt
 from numbers import Real
 
+from django.utils import timezone
+
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -19,7 +21,7 @@ class TodayChecklistTests(APITestCase):
         res = self.client.get("/api/v1/habits/today/")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         body = res.json()
-        self.assertEqual(body["date"], dt.date.today().isoformat())
+        self.assertEqual(body["date"], timezone.localdate().isoformat())
         (item,) = body["items"]
         self.assertEqual(
             set(item.keys()),
@@ -70,7 +72,7 @@ class ToggleTests(APITestCase):
         self.assertEqual(HabitLog.objects.filter(habit=self.habit).count(), 1)
 
     def test_toggle_explicit_date(self):
-        yesterday = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+        yesterday = (timezone.localdate() - dt.timedelta(days=1)).isoformat()
         res = self._toggle({"date": yesterday})
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         body = res.json()
@@ -92,7 +94,7 @@ class ToggleTests(APITestCase):
         self.assertFalse(off["completed_today"])
 
     def test_completed_today_tracks_today_even_when_toggling_past_date(self):
-        yesterday = (dt.date.today() - dt.timedelta(days=1)).isoformat()
+        yesterday = (timezone.localdate() - dt.timedelta(days=1)).isoformat()
         body = self._toggle({"date": yesterday}).json()
         self.assertTrue(body["completed"])          # yesterday got done...
         self.assertFalse(body["completed_today"])   # ...but today still pending
@@ -102,7 +104,7 @@ class HistoryTests(APITestCase):
     def setUp(self):
         self.user = make_user()
         self.habit = make_habit(self.user, days_ago=10)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(3):  # today, yesterday, 2 days ago
             HabitLog.objects.create(
                 habit=self.habit, date=today - dt.timedelta(days=offset)
@@ -116,7 +118,7 @@ class HistoryTests(APITestCase):
         self.assertEqual(len(body["days"]), 7)
         done = {d["date"] for d in body["days"] if d["completed"]}
         expected = {
-            (dt.date.today() - dt.timedelta(days=o)).isoformat() for o in range(3)
+            (timezone.localdate() - dt.timedelta(days=o)).isoformat() for o in range(3)
         }
         self.assertEqual(done, expected)
         for day in body["days"]:
@@ -138,7 +140,7 @@ class HeatmapTests(APITestCase):
     def setUp(self):
         self.user = make_user()
         self.habit = make_habit(self.user, days_ago=14)
-        HabitLog.objects.create(habit=self.habit, date=dt.date.today())
+        HabitLog.objects.create(habit=self.habit, date=timezone.localdate())
         self.client.force_authenticate(self.user)
 
     def test_heatmap_structure(self):
@@ -146,7 +148,7 @@ class HeatmapTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         weeks = res.json()["weeks"]
         self.assertEqual(len(weeks), 4)
-        today = dt.date.today()
+        today = timezone.localdate()
         monday_of_this_week = today - dt.timedelta(days=today.weekday())
         expected_start = monday_of_this_week - dt.timedelta(weeks=3)
         for i, week in enumerate(weeks):
@@ -165,14 +167,14 @@ class HeatmapTests(APITestCase):
         weeks = self.client.get("/api/v1/habits/heatmap_data/?weeks=1").json()["weeks"]
         last_days = weeks[-1]["days"]
         today_entry = last_days[-1]
-        self.assertEqual(today_entry["date"], dt.date.today().isoformat())
+        self.assertEqual(today_entry["date"], timezone.localdate().isoformat())
         self.assertEqual(today_entry["level"], 4)
         self.assertEqual(today_entry["ratio"], 1.0)
 
     def test_heatmap_excludes_other_users_habits(self):
         other = make_user(username="shadow")
         foreign = make_habit(other, name="Foreign")
-        HabitLog.objects.create(habit=foreign, date=dt.date.today())
+        HabitLog.objects.create(habit=foreign, date=timezone.localdate())
         weeks = self.client.get("/api/v1/habits/heatmap_data/?weeks=1").json()["weeks"]
         today_entry = weeks[-1]["days"][-1]
         self.assertEqual(today_entry["ratio"], 1.0)  # still just our own single habit

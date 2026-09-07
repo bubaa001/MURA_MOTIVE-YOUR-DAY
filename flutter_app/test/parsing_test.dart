@@ -46,4 +46,58 @@ void main() {
     final TodayChecklist t = TodayChecklist.fromJson(raw);
     expect(t.items.single.name, 'Drink Water');
   });
+
+  test('parses /me/ plan and push_topic with defaults', () {
+    const raw = <String, dynamic>{
+      'id': 1,
+      'username': 'disciplined',
+      'email': 'me@example.com',
+      'plan': 'premium',
+      'push_topic': 'mura-user-1',
+    };
+    final User u = User.fromJson(raw);
+    expect(u.plan, 'premium');
+    expect(u.pushTopic, 'mura-user-1');
+
+    // Old payloads without the new fields fall back to "free" / ''.
+    final User legacy = User.fromJson(const <String, dynamic>{
+      'id': 2,
+      'username': 'legacy',
+    });
+    expect(legacy.plan, 'free');
+    expect(legacy.pushTopic, '');
+  });
+
+  test('parses /habits/history_batch/ payload keyed by habit id', () {
+    const raw = <String, dynamic>{
+      'days_span': 180,
+      'habits': {
+        '3': {
+          'days': [
+            {'date': '2026-09-01', 'completed': true},
+            {'date': '2026-09-02', 'completed': false},
+          ],
+          'streaks': {'current': 3, 'best': 12},
+        },
+        '17': {
+          'days': [
+            {'date': '2026-09-01', 'completed': true},
+          ],
+          'streaks': {'current': 1, 'best': 1},
+        },
+      },
+    };
+    final HabitHistoryBatch b = HabitHistoryBatch.fromJson(raw);
+    expect(b.daysSpan, 180);
+    expect(b.histories.keys, unorderedEquals(<int>[3, 17]));
+    expect(b.histories[3]!.currentStreak, 3);
+    expect(b.histories[3]!.bestStreak, 12);
+    expect(b.histories[3]!.days.first.completed, isTrue);
+    expect(b.histories[17]!.days.single.date, '2026-09-01');
+
+    // Missing habits map or malformed ids degrade to an empty batch.
+    final HabitHistoryBatch empty =
+        HabitHistoryBatch.fromJson(const <String, dynamic>{'days_span': 7});
+    expect(empty.histories, isEmpty);
+  });
 }

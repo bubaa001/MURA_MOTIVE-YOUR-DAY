@@ -4,6 +4,7 @@ Book upload / AI extraction was intentionally erased — the studio is a
 human content pipeline: write -> review -> approve -> sync -> live.
 """
 
+from django.conf import settings
 from django.db import models
 
 
@@ -35,9 +36,32 @@ class ExtractedItem(models.Model):
     review_status = models.CharField(max_length=20, choices=REVIEW_CHOICES, default="pending")
     synced = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # Audit trail: who wrote, reviewed, and when. Previously a "human review
+    # pipeline" had zero accountability fields.
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="feeder_submissions",
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="feeder_reviews",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    note = models.CharField(max_length=255, blank=True)  # e.g. rejection reason
 
     class Meta:
         ordering = ("-created_at", "-id")
+        indexes = [
+            models.Index(fields=("review_status",), name="feeder_item_status_idx"),
+            models.Index(fields=("type",), name="feeder_item_type_idx"),
+        ]
 
     def __str__(self) -> str:
         snippet = self.text[:60] + ("…" if len(self.text) > 60 else "")

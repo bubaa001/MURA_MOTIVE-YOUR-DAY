@@ -8,6 +8,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [email, setEmail] = useState("");
+  const [signupKey, setSignupKey] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -15,7 +16,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     setError("");
     try {
       if (registering) {
-        await registerEmployee(username, email, password);
+        await registerEmployee(username, email, password, signupKey.trim());
       } else {
         await login(username, password);
       }
@@ -51,6 +52,14 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
               placeholder="Work email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+            />
+            <label htmlFor="signup-key">Signup key (from the owner) <span aria-hidden="true">*</span></label>
+            <input
+              id="signup-key"
+              placeholder="Signup key (from the owner)"
+              value={signupKey}
+              onChange={(e) => setSignupKey(e.target.value)}
+              required
             />
           </>
         )}

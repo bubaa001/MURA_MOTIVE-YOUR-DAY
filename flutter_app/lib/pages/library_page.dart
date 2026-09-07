@@ -218,7 +218,9 @@ class _LibraryTabState extends State<_LibraryTab>
     });
     try {
       final items = await api.contentItems(
-          type: widget.type, status: widget.type == null ? 'saved' : null);
+          type: widget.type,
+          status: widget.type == null ? 'saved' : null,
+          pageSize: 200);
       if (!mounted) return;
       setState(() {
         _items = items;
@@ -510,6 +512,18 @@ class _QuoteCard extends StatelessWidget {
                       width: double.infinity,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      loadingBuilder: (_, child, progress) => progress == null
+                          ? child
+                          : Container(
+                              height: 150,
+                              color: pal.field,
+                              alignment: Alignment.center,
+                              child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: pal.amber)),
+                            ),
                     ),
                   ),
                 ),
@@ -700,6 +714,12 @@ class _QuoteCard extends StatelessWidget {
               api.getMediaUrl(url),
               fit: BoxFit.contain,
               semanticLabel: title,
+              errorBuilder: (_, __, ___) => Container(
+                height: 120,
+                alignment: Alignment.center,
+                child: Icon(Icons.broken_image_outlined,
+                    color: MuraPalette.of(context).textDim, size: 32),
+              ),
             ),
           ),
         ),

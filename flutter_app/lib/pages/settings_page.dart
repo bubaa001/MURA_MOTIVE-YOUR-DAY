@@ -308,15 +308,46 @@ class _SettingsPageState extends State<SettingsPage> {
             child: CircleAvatar(
               radius: 36,
               backgroundColor: _pal.amber,
-              backgroundImage:
-                  _me?.avatar == null ? null : NetworkImage(_me!.avatar!),
               child: _me?.avatar == null
                   ? Text(_initial,
                       style: TextStyle(
                           color: _pal.onAmber,
                           fontSize: 30,
                           fontWeight: FontWeight.w800))
-                  : null,
+                  : ClipOval(
+                      child: Image.network(
+                        api.getMediaUrl(_me!.avatar),
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 72,
+                          height: 72,
+                          color: _pal.amber,
+                          alignment: Alignment.center,
+                          child: Text(_initial,
+                              style: TextStyle(
+                                  color: _pal.onAmber,
+                                  fontSize: 30,
+                                  fontWeight: FontWeight.w800)),
+                        ),
+                        loadingBuilder: (_, child, progress) =>
+                            progress == null
+                                ? child
+                                : Container(
+                                    width: 72,
+                                    height: 72,
+                                    color: _pal.amber,
+                                    alignment: Alignment.center,
+                                    child: SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: _pal.onAmber)),
+                                  ),
+                      ),
+                    ),
             ),
           ),
           const SizedBox(height: 14),

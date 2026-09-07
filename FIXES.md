@@ -14,7 +14,7 @@ Full-stack audit (backend + Expo app) with end-to-end verification.
 ## Root causes found (why it "didn't work at all")
 
 1. **Stale LAN IP in `mobile/.env`** — pointed at `192.168.0.107`; the dev machine is now `192.168.0.103`. Every request from a physical device died at the network layer. → Fixed to the live IP.
-2. **Dev login credentials were broken** — `buba`'s stored password no longer matched the documented one, so sign-in returned 401 even with correct networking. → Password reset to `buba` (see README quickstart).
+2. **Dev login credentials were broken** — `buba`'s stored password no longer matched the documented one, so sign-in returned 401 even with correct networking. → Password reset (the historical default password is no longer documented anywhere; rotate via `manage.py changepassword buba`).
 3. **Abandoned Flutter prototype (`flutter_app/`) hardcodes a dead ngrok tunnel** — anyone running it gets 100% failure. → Marked `flutter_app/DEPRECATED.md`; use `mobile/` instead. Its ~1 GB `build/` dir is safe to delete.
 4. **JWT HMAC key < 32 bytes** (PyJWT warning on every token op). → Proper-length dev `SECRET_KEY` added to `backend/.env`. Note: this invalidates previously issued tokens — just sign in again.
 5. **Dev DB polluted with QA junk users** (`qa_*`, `probe*`, `tunneltest`). → Deleted.

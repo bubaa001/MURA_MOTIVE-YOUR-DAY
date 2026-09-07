@@ -22,6 +22,14 @@ class FeederApiTests(APITestCase):
     def setUp(self):
         self.client.force_authenticate(self.user)
 
+    @staticmethod
+    def make_superuser():
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.create_user(
+            username="owner", password="secret-pass-123", is_staff=True, is_superuser=True
+        )
+
     def test_requires_staff(self):
         from django.contrib.auth import get_user_model
 
@@ -30,6 +38,17 @@ class FeederApiTests(APITestCase):
         )
         self.assertEqual(self.client.get("/api/v1/feeder/items/").status_code, 403)
         self.assertEqual(self.client.get("/api/v1/feeder/content/").status_code, 403)
+
+    def test_sync_requires_superuser(self):
+        # Staff must NOT be able to force content live (publish gate).
+        res = self.client.post(reverse("feeder-item-sync"))
+        self.assertEqual(res.status_code, 403)
+        item = ExtractedItem.objects.create(
+            type="quote", text="staff cannot publish", source="s", review_status="approved"
+        )
+        res = self.client.post(reverse("feeder-item-sync-item", args=[item.id]))
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(ContentItem.objects.filter(text="staff cannot publish").exists())
 
     def test_manual_submit_enters_pending_review_queue(self):
         url = reverse("feeder-item-manual-submit")
@@ -83,6 +102,7 @@ class FeederApiTests(APITestCase):
             review_status="approved",
         )
         ContentItem.objects.create(type="quote", text="Already there.", source="seeded")
+        self.client.force_authenticate(self.make_superuser())
         res = self.client.post(reverse("feeder-item-sync"))
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["submitted"], 1)
@@ -95,6 +115,7 @@ class FeederApiTests(APITestCase):
         item = ExtractedItem.objects.create(
             type="journal_story", text="A brand new story", source="Buba", review_status="approved"
         )
+        self.client.force_authenticate(self.make_superuser())
         res = self.client.post(reverse("feeder-item-sync"))
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["synced"], 1)
@@ -117,8 +138,8 @@ class SyncItemsUnitTests(APITestCase):
         candidate.image.save("q.png", ContentFile(b"not-a-real-image"), save=False)
         candidate.save(update_fields=["image"])
 
-        count = sync_items([candidate])
-        self.assertEqual(count, 1)
+        report = sync_items([candidate])
+        self.assertEqual(report[candidate.id], {"content_id": 1, "created": True, "ok": True})
         item = ContentItem.objects.get(type="quote", text="Do it.")
         self.assertEqual(item.status, "published")
         self.assertEqual(item.feeder_item_id, candidate.id)
@@ -129,6 +150,9 @@ class SyncItemsUnitTests(APITestCase):
         candidate = ExtractedItem.objects.create(
             type="quote", text="Once.", source="Me", review_status="approved"
         )
-        self.assertEqual(sync_items([candidate]), 1)
-        self.assertEqual(sync_items([candidate]), 0)  # duplicate -> no new item
+        first = sync_items([candidate])
+        self.assertEqual(first[candidate.id]["created"], True)
+        second = sync_items([candidate])  # duplicate -> no new item
+        self.assertEqual(second[candidate.id]["created"], False)
+        self.assertTrue(second[candidate.id]["ok"])
         self.assertEqual(ContentItem.objects.filter(type="quote", text="Once.").count(), 1)

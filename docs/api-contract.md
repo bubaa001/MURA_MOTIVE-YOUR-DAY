@@ -15,10 +15,11 @@ Single source of truth between the Django backend (`backend/`) and the Expo app 
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| POST | /auth/token/ | `{username, password}` | → `{access, refresh}` |
+| POST | /auth/token/ | `{username, password}` | → `{access, refresh}`; accepts email as identifier (prefers exact username match). Throttled 30/min |
 | POST | /auth/token/refresh/ | `{refresh}` | → `{access}` |
 | POST | /auth/register/ | `{username, email, password}` | creates user, → `{access, refresh}` |
-| GET  | /me/ | — | profile: `{id, username, email, first_name, display_name, avatar, date_joined}` |
+| POST | /auth/register/employee/ | `{username, email, password, signup_key}` | staff (feeder) account — 400 without the owner's `EMPLOYEE_SIGNUP_KEY`; disabled entirely when the env var is unset |
+| GET  | /me/ | — | profile: `{id, username, email, first_name, display_name, avatar, date_joined, is_staff, is_superuser, plan, push_topic}` — `plan` (`free`\|`premium`) is the monetization entitlement source of truth |
 | PATCH| /me/ | partial profile or multipart `avatar` | e.g. `{display_name}` |
 | POST | /me/avatar/ | multipart `avatar` file | replace the authenticated user's avatar |
 | DELETE | /me/avatar/ | — | remove the authenticated user's avatar |
@@ -67,7 +68,12 @@ Habit shape:
 | GET    | /habits/today/ | today's checklist → `{"date": "YYYY-MM-DD", "items": [{habit_id, name, icon, color, category, completed, log_id}]}` |
 | POST   | /habits/{id}/toggle/ | body `{"date": "YYYY-MM-DD"}` (optional, default today) → toggles that day's log; returns flat `{habit_id, date, completed, current_streak, best_streak, completion_rate_30d, completed_today}` — `completed` is authoritative for the toggled day; `completed_today` always refers to today |
 | GET    | /habits/{id}/history/?days=180 | → `{"days":[{"date":"...","completed":true}], "streaks":{"current":n,"best":m}}` |
+| GET    | /habits/history_batch/?days=180 | ALL habits' history in one call → `{"days_span":180,"habits":{"<habit_id>":{"days":[...],"streaks":{"current":n,"best":m}}}}` — replaces the per-habit loop; the mobile app must use this |
 | GET    | /habits/heatmap_data/?weeks=26 | → `{"weeks":[{"week_start":"...","days":[{"date":"...","ratio":0.75,"level":3}]}]}` — level = intensity bucket 0..4 of daily completion ratio |
+
+**All date math is timezone-aware** (uses `TIMEZONE` from `.env`, default UTC; prod uses America/New_York). Toggling a future date returns 400.
+
+**Pagination:** every list endpoint returns DRF pages `{count, next, previous, results}` (page_size 50, max 200). Clients that need full lists MUST follow `next` (absolute URL) — reading only `results` silently truncates at the first page.
 
 **Streak rules:** a streak counts consecutive covered days. With `grace_days_per_week = g > 0`, up to *g* missed days per rolling 7-day window are forgiven without breaking the streak (never two consecutive missed days); a forgiven day counts toward the streak length (freeze-style). Today with no log yet is "pending", not broken.
 
@@ -134,16 +140,32 @@ CRUD at `/memories/`.
 
 CRUD at `/reminders/`. Client schedules local notifications from this list (Phase 2 moves scheduling server-side).
 
+## TheFeeder (staff studio — all endpoints require is_staff)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET/POST/PATCH/DELETE | /feeder/items/ | review queue CRUD; `?review_status=pending&type=quote`; PATCH accepts `type, text, source, year, tags, image_url, review_status, note` (candidates ARE editable) |
+| POST | /feeder/items/manual-submit/ | new pending candidate (records `submitted_by`) |
+| POST | /feeder/items/bulk-review/ | `{ids, review_status}` — records `reviewed_by/at` |
+| POST | /feeder/items/sync/ | **superuser only** (403 for staff) — publishes all approved+unsynced; → `{submitted, synced, results:[{item_id, content_id, created, ok, error?}]}` |
+| POST | /feeder/items/{id}/sync_item/ | **superuser only** — publish exactly one approved candidate |
+| POST | /feeder/items/{id}/unsync/ | **superuser only** — reset `synced` so a deleted live copy can be re-synced |
+| GET/POST/PATCH/DELETE | /feeder/content/ | live content hub CRUD (publish status changes: superuser only) |
+| GET/POST/PATCH/DELETE | /feeder/push/ | Signo broadcast campaigns; `send`/`test` actions |
+
 ## Health section
 
 Reuses the habits engine: the client filters `GET /habits/` by `category=physical` for the Health view. No separate endpoints in Phase 1.
 
 ## CORS
 
-`django-cors-header` allows all origins in dev so the Expo app can call it from any origin.
+`django-cors-header` allows all origins in dev so the studio/app can call it from any origin; production sets `CORS_ALLOW_ALL=false`.
 
-## Phase 2 hooks (documented, not implemented yet)
+## Push architecture
 
-- Per-user isolation already enforced by querysets — multi-user ready.
-- Server push: management command will scan due reminders and call Expo push API.
-- Entitlement checks for subscriptions land on `/me/`.
+Personal events (streak milestones, goal wins, user reminders) go to per-user Signo topics (`{SIGNO_NAMESPACE}:{user_id}`) and never to the global namespace — the global namespace is owner broadcasts only. See `docs/runbook.md` §5.
+
+## Phase 2 hooks
+
+- Entitlement checks for subscriptions land on `/me/` — `User.plan` field is live; RevenueCat webhook flips it (runbook §7).
+- Server-side reminder pushes run via scheduled `push_due_reminders` (due-window match, hourly-safe).

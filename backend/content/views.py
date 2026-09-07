@@ -1,6 +1,6 @@
 import datetime as dt
 
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Count, Exists, F, OuterRef, Q, Value
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
@@ -133,17 +133,25 @@ class ContentItemViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, views
     @action(detail=True, methods=["post"])
     def like(self, request, pk=None):
         item = self.get_object()
-        engagement, _ = ContentEngagement.objects.get_or_create(item=item, user=request.user)
-        engagement.liked = not engagement.liked
-        engagement.save(update_fields=["liked"])
+        # Atomic flip: two concurrent likes previously read the same state
+        # and both wrote False, cancelling each other.
+        with transaction.atomic():
+            engagement, _ = ContentEngagement.objects.select_for_update().get_or_create(
+                item=item, user=request.user
+            )
+            engagement.liked = not engagement.liked
+            engagement.save(update_fields=["liked"])
         return Response(ContentItemSerializer(self.get_queryset().get(pk=item.pk), context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     def save(self, request, pk=None):
         item = self.get_object()
-        engagement, _ = ContentEngagement.objects.get_or_create(item=item, user=request.user)
-        engagement.saved = not engagement.saved
-        engagement.save(update_fields=["saved"])
+        with transaction.atomic():
+            engagement, _ = ContentEngagement.objects.select_for_update().get_or_create(
+                item=item, user=request.user
+            )
+            engagement.saved = not engagement.saved
+            engagement.save(update_fields=["saved"])
         return Response(ContentItemSerializer(self.get_queryset().get(pk=item.pk), context={"request": request}).data)
 
 
@@ -190,7 +198,14 @@ def bulk_import(request):
                 tags=[str(t)[:50].lower() for t in tags],
             )
         )
-    ContentItem.objects.bulk_create(rows)
+    # All-or-nothing: a mid-batch failure previously left partial data behind.
+    with transaction.atomic():
+        for row in rows:
+            # get_or_create per row (instead of blind bulk_create) so the
+            # (type, text) dedupe also holds under concurrent imports.
+            ContentItem.objects.get_or_create(
+                type=row.type, text=row.text, defaults={"source": row.source, "tags": row.tags}
+            )
     created = len(rows)
     return Response({"created": created, "skipped_duplicates": skipped_duplicates, "invalid": invalid})
 
@@ -210,7 +225,7 @@ def daily_feed(request):
     """/api/v1/content/daily/ -> {quote, insight, philosophy} for a date."""
     raw_date = request.query_params.get("date")
     try:
-        day = dt.date.fromisoformat(raw_date) if raw_date else dt.date.today()
+        day = dt.date.fromisoformat(raw_date) if raw_date else timezone.localdate()
     except ValueError:
         return Response({"detail": "Invalid date, expected YYYY-MM-DD."}, status=400)
 
@@ -239,7 +254,7 @@ def motion_feed(request):
     """Return the deterministic batch of up to ten motion quotes for a day."""
     raw_date = request.query_params.get("date")
     try:
-        day = dt.date.fromisoformat(raw_date) if raw_date else dt.date.today()
+        day = dt.date.fromisoformat(raw_date) if raw_date else timezone.localdate()
     except ValueError:
         return Response({"detail": "Invalid date, expected YYYY-MM-DD."}, status=400)
 

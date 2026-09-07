@@ -1,5 +1,7 @@
 import datetime as dt
 
+from django.utils import timezone
+
 from django.conf import settings
 from django.db import models
 
@@ -45,7 +47,7 @@ class HabitLog(models.Model):
     toggle-off stays auditable; streak math only counts completed=True rows."""
 
     habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="logs")
-    date = models.DateField(default=dt.date.today)
+    date = models.DateField(default=timezone.localdate)
     completed = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

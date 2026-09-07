@@ -1,5 +1,7 @@
 import datetime as dt
 
+from django.utils import timezone
+
 from rest_framework.test import APITestCase
 
 from .factories_for_tests import make_habit, make_user
@@ -40,7 +42,7 @@ class StreakTests(APITestCase):
 
     def test_consecutive_days(self):
         habit = make_habit(self.user, days_ago=5)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(3):  # yesterday ... three days back
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         stats = habit_streaks(habit)
@@ -49,14 +51,14 @@ class StreakTests(APITestCase):
 
     def test_unchecked_today_is_pending_not_broken(self):
         habit = make_habit(self.user, days_ago=5)
-        today = dt.date.today()
+        today = timezone.localdate()
         HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=1))
         stats = habit_streaks(habit)
         self.assertEqual(stats["current_streak"], 1)
 
     def test_missed_day_breaks_without_grace(self):
         habit = make_habit(self.user, days_ago=6)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in (0, 2, 3):
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         stats = habit_streaks(habit)
@@ -65,7 +67,7 @@ class StreakTests(APITestCase):
 
     def test_single_grace_day_survives(self):
         habit = make_habit(self.user, grace=1, days_ago=8)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(7):  # 7 straight days ending yesterday
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         # poke one hole three days back — forgiven by the grace budget of 1
@@ -77,7 +79,7 @@ class StreakTests(APITestCase):
 
     def test_two_consecutive_misses_break_even_with_grace(self):
         habit = make_habit(self.user, grace=1, days_ago=10)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(8):
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         HabitLog.objects.filter(habit=habit, date=today - dt.timedelta(days=4)).delete()
@@ -90,7 +92,7 @@ class StreakTests(APITestCase):
 
     def test_weekly_window_caps_forgiveness(self):
         habit = make_habit(self.user, grace=1, days_ago=14)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(13):
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         # Two isolated holes inside the same rolling week -> second breaks the old run.
@@ -102,7 +104,7 @@ class StreakTests(APITestCase):
 
     def test_completion_rate_30d(self):
         habit = make_habit(self.user, days_ago=30)
-        today = dt.date.today()
+        today = timezone.localdate()
         for offset in range(15):
             HabitLog.objects.create(habit=habit, date=today - dt.timedelta(days=offset + 1))
         rate = completion_rate_30d(habit)

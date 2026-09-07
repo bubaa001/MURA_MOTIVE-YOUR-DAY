@@ -3,6 +3,7 @@ backend/.env
 backend/db.sqlite3
 backend/media/
 backend/staticfiles/
+backend/backups/
 
 # Python
 backend/.venv/
@@ -14,6 +15,10 @@ flutter_app/.dart_tool/
 flutter_app/build/
 flutter_app/.flutter-plugins-dependencies
 flutter_app/.packages
+
+# Release artifacts never belong in git — ship them via GitHub Releases.
+*.apk
+*.aab
 
 # Node
 **/node_modules/

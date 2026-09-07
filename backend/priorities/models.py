@@ -1,5 +1,7 @@
 import datetime as dt
 
+from django.utils import timezone
+
 from django.conf import settings
 from django.db import models
 
@@ -12,7 +14,7 @@ class Priority(models.Model):
     category = models.CharField(max_length=40, default="Deep Work")
     order = models.PositiveIntegerField(default=0)
     completed = models.BooleanField(default=False)
-    date = models.DateField(default=dt.date.today, db_index=True)
+    date = models.DateField(default=timezone.localdate, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

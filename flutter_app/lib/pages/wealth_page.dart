@@ -18,6 +18,7 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
   int? _strategicGoalId;
   WealthSummary? _summary;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -29,15 +30,16 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
   void onAppRefresh() => _load();
 
   Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final results = await Future.wait<Object>([
         ApiClient.instance.habits(),
         ApiClient.instance.listGoals(),
       ]);
-      WealthSummary? summary;
-      try {
-        summary = await ApiClient.instance.wealthSummary();
-      } catch (_) {}
+      final summary = await ApiClient.instance.wealthSummary();
       final prefs = await SharedPreferences.getInstance();
       final savedGoalId = prefs.getInt('mura.wealth.strategic_goal_id');
       if (!mounted) return;
@@ -48,14 +50,26 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
         _strategicGoalId = savedGoalId;
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = friendlyError(e);
+        _loading = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    if (_error != null && _summary == null) {
+      return Scaffold(
+        backgroundColor: scheme.surface,
+        body: SafeArea(
+          child: _ErrorState(message: _error!, onRetry: _load),
+        ),
+      );
+    }
     final activeGoals = _goals.where((item) => !item.isAchieved).toList();
     final goal =
         activeGoals.where((item) => item.id == _strategicGoalId).firstOrNull ??
@@ -1076,6 +1090,63 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
         borderRadius: BorderRadius.circular(16),
       ),
       child: Text(text, style: TextStyle(color: scheme.onSurfaceVariant)),
+    );
+  }
+}
+
+/// Full-screen error + Retry shown when the wealth summary request fails,
+/// mirroring the pattern used by the habits and today pages.
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.cloud_off_rounded,
+                  color: scheme.onSurfaceVariant, size: 28),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 13.5,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 22),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.primary,
+                side: BorderSide(color: scheme.primary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

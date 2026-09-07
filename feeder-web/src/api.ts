@@ -1,4 +1,4 @@
-import type { ContentPayload, Item, LiveItem, Me, ManualSubmission, ReviewStatus } from "./types";
+import type { ContentPayload, ContentStatus, Item, ItemType, LiveItem, Me, ManualSubmission, ReviewStatus } from "./types";
 
 const API = "https://bubaa.pythonanywhere.com/api/v1";
 const ACCESS_KEY = "feeder_access";
@@ -28,16 +28,22 @@ export async function login(username: string, password: string): Promise<void> {
 export async function registerEmployee(
   username: string,
   email: string,
-  password: string
+  password: string,
+  signupKey: string
 ): Promise<void> {
   const res = await fetch(API + "/auth/register/employee/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, email, password })
+    body: JSON.stringify({ username, email, password, signup_key: signupKey })
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.signup_key?.[0] || body.detail || "Registration failed.");
+    const keyError = body.signup_key;
+    throw new Error(
+      (typeof keyError === "string" ? keyError : keyError?.[0]) ||
+        body.detail ||
+        "Registration failed."
+    );
   }
   const data = await res.json();
   localStorage.setItem(ACCESS_KEY, data.access);
@@ -67,8 +73,9 @@ async function refreshTokens(): Promise<boolean> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
+  const url = path.startsWith("http") ? path : API + path;
   const token = localStorage.getItem(ACCESS_KEY);
-  const res = await fetch(API + path, {
+  const res = await fetch(url, {
     ...options,
     headers: {
       ...(options.headers || {}),
@@ -91,10 +98,65 @@ async function request<T>(path: string, options: RequestInit = {}, retry = true)
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
-export function listItems(reviewStatus?: ReviewStatus): Promise<Item[]> {
+// --- DRF pagination ----------------------------------------------------------
+// Lists now return {count, next, previous, results}. page_size is capped at
+// 200 by the backend, so "next" must be followed to see everything. The
+// absolute `next` URL can be fetched directly by request().
+
+interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+function isPaginated<T>(data: T[] | Paginated<T>): data is Paginated<T> {
+  return !Array.isArray(data) && typeof (data as Paginated<T>).results === "object";
+}
+
+export interface ListPage<T> {
+  items: T[];
+  count: number;
+  next: string | null;
+}
+
+/** Fetch the first page of a paginated list, exposing count + the next URL. */
+export async function fetchPage<T>(path: string): Promise<ListPage<T>> {
+  const data = await request<T[] | Paginated<T>>(path);
+  if (isPaginated(data)) {
+    return { items: data.results, count: data.count, next: data.next };
+  }
+  return { items: data, count: data.length, next: null };
+}
+
+/** Fetch a subsequent page by its absolute `next` URL. */
+export function fetchNextPage<T>(nextUrl: string): Promise<ListPage<T>> {
+  return request<Paginated<T>>(nextUrl).then((data) => ({
+    items: data.results,
+    count: data.count,
+    next: data.next
+  }));
+}
+
+/** Follow `next` until it runs out (or maxPages is hit) and concatenate results. */
+export async function fetchAll<T>(path: string, maxPages = 10): Promise<ListPage<T>> {
+  const first = await fetchPage<T>(path);
+  const items = [...first.items];
+  let next = first.next;
+  let pages = 1;
+  while (next && pages < maxPages) {
+    const page = await fetchNextPage<T>(next);
+    items.push(...page.items);
+    next = page.next;
+    pages += 1;
+  }
+  return { items, count: first.count, next };
+}
+
+export function listItems(reviewStatus?: ReviewStatus): Promise<ListPage<Item>> {
   const qs = new URLSearchParams();
   if (reviewStatus) qs.set("review_status", reviewStatus);
-  return request<Item[] | { results: Item[] }>("/feeder/items/?" + qs.toString()).then(normalizeList);
+  return fetchAll<Item>("/feeder/items/?" + qs.toString());
 }
 
 export function deleteCandidate(id: number): Promise<void> {
@@ -109,6 +171,25 @@ export function reviewItem(id: number, review_status: ReviewStatus): Promise<Ite
   });
 }
 
+export interface CandidatePatch {
+  type?: ItemType;
+  text?: string;
+  source?: string;
+  year?: number | null;
+  tags?: string[];
+  image_url?: string;
+  review_status?: ReviewStatus;
+  note?: string;
+}
+
+export function updateCandidate(id: number, patch: CandidatePatch): Promise<Item> {
+  return request<Item>("/feeder/items/" + id + "/", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+}
+
 export function bulkReview(ids: number[], review_status: "approved" | "rejected"): Promise<void> {
   return request("/feeder/items/bulk-review/", {
     method: "POST",
@@ -117,7 +198,21 @@ export function bulkReview(ids: number[], review_status: "approved" | "rejected"
   });
 }
 
-export function syncApproved(): Promise<{ submitted: number; synced: number }> {
+export interface SyncItemResult {
+  item_id: number;
+  content_id: number | null;
+  created: boolean;
+  ok: boolean;
+  error?: string;
+}
+
+export interface SyncResponse {
+  submitted: number;
+  synced: number;
+  results: SyncItemResult[];
+}
+
+export function syncApproved(): Promise<SyncResponse> {
   return request("/feeder/items/sync/", { method: "POST" });
 }
 
@@ -127,6 +222,7 @@ export function submitManually(submission: ManualSubmission): Promise<{ item: It
     form.append("type", submission.type);
     form.append("text", submission.text);
     form.append("source", submission.source || "");
+    if (submission.year) form.append("year", String(submission.year));
     form.append("tags", JSON.stringify(submission.tags || []));
     form.append("image_url", submission.image_url || "");
     form.append("image", submission.image);
@@ -139,23 +235,18 @@ export function submitManually(submission: ManualSubmission): Promise<{ item: It
   });
 }
 
-function normalizeList<T>(data: T[] | { results: T[] }): T[] {
-  return Array.isArray(data) ? data : data.results;
-}
-
 // --- Live content (staff studio: load, edit, archive/restore, delete) -------
 
 export function me(): Promise<Me> {
   return request<Me>("/me/");
 }
 
-export function listContent(filter: { type?: string; status?: string; q?: string } = {}): Promise<LiveItem[]> {
+export function listContent(filter: { type?: string; status?: string; q?: string } = {}): Promise<ListPage<LiveItem>> {
   const qs = new URLSearchParams();
   if (filter.type) qs.set("type", filter.type);
   if (filter.status) qs.set("status", filter.status);
   if (filter.q) qs.set("q", filter.q);
-  qs.set("page_size", "1000");
-  return request<LiveItem[] | { results: LiveItem[] }>("/feeder/content/?" + qs.toString()).then(normalizeList);
+  return fetchAll<LiveItem>("/feeder/content/?" + qs.toString());
 }
 
 function contentForm(payload: ContentPayload): FormData | string {
@@ -205,6 +296,15 @@ export function updateContent(id: number, payload: ContentPayload): Promise<Live
   });
 }
 
+/** Status-only PATCH (server ignores published for non-superusers). */
+export function setContentStatus(id: number, status: ContentStatus): Promise<LiveItem> {
+  return request<LiveItem>("/feeder/content/" + id + "/", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status })
+  });
+}
+
 export function deleteContent(id: number): Promise<void> {
   return request("/feeder/content/" + id + "/", { method: "DELETE" });
 }
@@ -240,7 +340,7 @@ export interface PushPayload {
 }
 
 export function listPushCampaigns(): Promise<PushCampaign[]> {
-  return request<PushCampaign[] | { results: PushCampaign[] }>("/feeder/push/?page_size=100").then(normalizeList);
+  return fetchAll<PushCampaign>("/feeder/push/").then((page) => page.items);
 }
 
 export function createPushCampaign(payload: PushPayload): Promise<PushCampaign> {

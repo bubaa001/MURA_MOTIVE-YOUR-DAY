@@ -1,8 +1,9 @@
 from decimal import Decimal
 
+from django.db import IntegrityError, transaction
 from django.db.models import Q, QuerySet, Sum
 from django.utils import timezone
-from rest_framework import generics, viewsets
+from rest_framework import generics, serializers, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -15,6 +16,17 @@ from .serializers import (
     SavingsGoalSerializer,
     WealthProfileSerializer,
 )
+
+
+def _get_or_create_profile(user) -> WealthProfile:
+    """Concurrent first loads previously raced the OneToOne insert and
+    surfaced IntegrityError as a 500; retry the fetch instead."""
+    try:
+        with transaction.atomic():
+            profile, _created = WealthProfile.objects.get_or_create(user=user)
+    except IntegrityError:
+        profile = WealthProfile.objects.get(user=user)
+    return profile
 
 
 def _monthly_income(streams: QuerySet[IncomeStream]) -> Decimal:
@@ -41,6 +53,17 @@ class NetWorthSnapshotViewSet(UserOwnedViewSet):
 
     def get_queryset(self):
         return NetWorthSnapshot.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        # The serializer's duplicate-date check is check-then-act; the DB
+        # unique constraint is the real guard — surface its race as a 400.
+        try:
+            with transaction.atomic():
+                serializer.save(user=self.request.user)
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {"as_of": "A net-worth snapshot already exists for this date."}
+            )
 
 
 class ProfitEntryViewSet(UserOwnedViewSet):
@@ -71,8 +94,7 @@ class WealthProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = (IsAuthenticated,)
 
     def get_object(self):
-        profile, _created = WealthProfile.objects.get_or_create(user=self.request.user)
-        return profile
+        return _get_or_create_profile(self.request.user)
 
 
 @api_view(["GET"])
@@ -83,7 +105,7 @@ def wealth_summary(request):
     latest = snapshots.first()
     previous = snapshots[1] if snapshots.count() > 1 else None
     streams = IncomeStream.objects.filter(user=request.user)
-    profile, _created = WealthProfile.objects.get_or_create(user=request.user)
+    profile = _get_or_create_profile(request.user)
     goals = SavingsGoal.objects.filter(user=request.user, status="active")
     entries = ProfitEntry.objects.filter(user=request.user, date__gte=profile.start_date)
     totals = entries.aggregate(

@@ -20,15 +20,20 @@ import 'updater.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Surface every uncaught Dart error (with stack) in the log under [MURA]
-  // so device-side failures are diagnosable via adb logcat.
+  // so device-side failures are diagnosable via adb logcat (debug only;
+  // release builds keep the console clean).
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    // ignore: avoid_print
-    print('[MURA] UI-ERROR ${details.exception}\n${details.stack}');
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[MURA] UI-ERROR ${details.exception}\n${details.stack}');
+    }
   };
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    // ignore: avoid_print
-    print('[MURA] UNCAUGHT $error\n$stack');
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[MURA] UNCAUGHT $error\n$stack');
+    }
     return true;
   };
   await loadMuraThemeMode();
@@ -156,7 +161,7 @@ class _MuraErrorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Raw exception text is logged for diagnosis, never shown to the user.
-    if (details != null) {
+    if (details != null && kDebugMode) {
       // ignore: avoid_print
       print('[MURA] RENDER-ERROR '
           '${details!.exception}\n'
@@ -469,6 +474,8 @@ class _AvatarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String label = (initials ?? 'M').substring(0, 1).toUpperCase();
+    final bool hasAvatar = avatar != null && avatar!.isNotEmpty;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -477,26 +484,41 @@ class _AvatarButton extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: const Color(0xFFFFC174),
-          image: avatar != null && avatar!.isNotEmpty
-              ? DecorationImage(image: NetworkImage(avatar!), fit: BoxFit.cover)
-              : null,
           border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
-        child: avatar == null || avatar!.isEmpty
-            ? Center(
-                child: Text(
-                  (initials ?? 'M').substring(0, 1).toUpperCase(),
-                  style: const TextStyle(
-                    color: Color(0xFF2A1700),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
+        // Image.network with graceful fallbacks replaces DecorationImage so
+        // broken or offline avatars degrade to the initial, not an exception.
+        child: hasAvatar
+            ? ClipOval(
+                child: Image.network(
+                  ApiClient.instance.getMediaUrl(avatar),
+                  width: 34,
+                  height: 34,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _avatarFallback(label),
+                  loadingBuilder: (_, child, progress) =>
+                      progress == null ? child : _avatarFallback(label),
                 ),
               )
-            : null,
+            : _avatarFallback(label),
       ),
     );
   }
+
+  Widget _avatarFallback(String label) => Container(
+        width: 34,
+        height: 34,
+        color: const Color(0xFFFFC174),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF2A1700),
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
 }
 
 /// Bottom sheet listing the pushed-event feed; marks everything read.

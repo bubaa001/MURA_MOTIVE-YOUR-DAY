@@ -8,6 +8,7 @@ variables so the same settings file serves local dev and production hosts.
 from __future__ import annotations
 
 import os
+import sys
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,12 +26,27 @@ def env_bool(key: str, default: bool = False) -> bool:
     return env(key, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+# The whole suite runs from one client/user, so it would trip the per-minute
+# buckets long before it finished; throttle rates are meaningless in tests.
+_in_test_run = "test" in sys.argv
+
+
 # --- Core ---
 SECRET_KEY = env("SECRET_KEY", "dev-only-insecure-key-change-me")
-DEBUG = env_bool("DEBUG", True)
+DEBUG = env_bool("DEBUG", False)
+if not DEBUG and SECRET_KEY == "dev-only-insecure-key-change-me":
+    # Fail-closed: a production host must never sign JWTs with the public dev key.
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured("SECRET_KEY must be set to a real secret in production.")
 _configured_hosts = [
     h.strip()
-    for h in env("ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",")
+    for h in env(
+        "ALLOWED_HOSTS",
+        # Default keeps local dev working and the PythonAnywhere deployment
+        # reachable even when ALLOWED_HOSTS is not set in its .env.
+        "127.0.0.1,localhost,testserver,bubaa.pythonanywhere.com",
+    ).split(",")
     if h.strip()
 ]
 _ngrok_hosts = [
@@ -42,6 +58,14 @@ _ngrok_hosts = [
     if h.strip()
 ]
 ALLOWED_HOSTS = list(dict.fromkeys(_configured_hosts + _ngrok_hosts))
+if DEBUG:
+    import logging
+
+    logging.getLogger(__name__).warning(
+        "DEBUG=True on host list %r — stack traces and settings will be exposed "
+        "to anyone who triggers an error. Set DEBUG=false in this environment's .env.",
+        ALLOWED_HOSTS,
+    )
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -149,6 +173,20 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
+    # AnonRate throttles brute-force login attempts; user rate is a safety net
+    # against a single client hammering the one shared PythonAnywhere worker.
+    "DEFAULT_THROTTLE_CLASSES": (
+        ()
+        if _in_test_run
+        else (
+            "rest_framework.throttling.AnonRateThrottle",
+            "rest_framework.throttling.UserRateThrottle",
+        )
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/min",
+        "user": "120/min",
+    },
 }
 
 SIMPLE_JWT = {
@@ -184,6 +222,10 @@ CSRF_TRUSTED_ORIGINS = [
 
 # --- Signo push ---
 SIGNO_NAMESPACE = env("SIGNO_NAMESPACE", "")
+# Per-user topic namespace pattern: "{base}:{user_id}" keeps each account's
+# pushes private (fixes the shared-namespace cross-user leak). The base
+# namespace stays usable for owner broadcasts from the studio.
+SIGNO_USER_NAMESPACE_TEMPLATE = env("SIGNO_USER_NAMESPACE_TEMPLATE", "{namespace}:{user_id}")
 
 # --- i18n / tz ---
 LANGUAGE_CODE = "en-us"
@@ -208,14 +250,10 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# --- TheFeeder (book extraction & sync) ---
-GEMINI_API_KEY = env("GEMINI_API_KEY")
-ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", "claude-sonnet-4-5")
-FEEDER_CHUNK_SIZE = int(env("FEEDER_CHUNK_SIZE", "800") or "800")
+# --- TheFeeder (human review pipeline) ---
+# Book upload / AI extraction was removed in 2026-08; candidates are written
+# and reviewed by people. bulk-import stays disabled until SERVICE_API_KEY is set.
 SERVICE_API_KEY = env("SERVICE_API_KEY")
-
-REDIS_URL = env("REDIS_URL")
-if REDIS_URL:
-    CELERY_BROKER_URL = REDIS_URL
-    CELERY_RESULT_BACKEND = REDIS_URL
+# Required shared secret for /auth/register/employee/. Unset = employee
+# registration is fully disabled (fail closed).
+EMPLOYEE_SIGNUP_KEY = env("EMPLOYEE_SIGNUP_KEY")

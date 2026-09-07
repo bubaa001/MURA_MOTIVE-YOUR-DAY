@@ -1,4 +1,7 @@
 """Priorities API: ordering, reorder endpoint + its validation."""
+import datetime as dt
+
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -22,8 +25,7 @@ class PriorityApiTests(APITestCase):
     def test_create_assigns_incrementing_order_and_today(self):
         results = self._list()
         self.assertEqual([r["order"] for r in results], [0, 1, 2])
-        import datetime as dt
-        self.assertEqual(results[0]["date"], dt.date.today().isoformat())
+        self.assertEqual(results[0]["date"], timezone.localdate().isoformat())
 
     def test_reorder_happy_path(self):
         res = self.client.post(

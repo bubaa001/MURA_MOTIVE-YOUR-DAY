@@ -86,15 +86,8 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
       setState(() => _habits = habits);
 
       final levels = await _fetchHeatmapLevels();
-      final recents = await Future.wait<List<bool?>?>(
-        habits.map((h) => _fetchRecent(h.id)).toList(),
-      );
+      final map = await _fetchRecentMap(habits.map((h) => h.id).toList());
       if (!mounted) return;
-      final map = <int, List<bool?>>{};
-      for (var i = 0; i < habits.length && i < recents.length; i++) {
-        final r = recents[i];
-        if (r != null) map[habits[i].id] = r;
-      }
       setState(() {
         _levels = levels;
         _recent = map;
@@ -125,19 +118,31 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     }).toList(growable: false);
   }
 
-  /// GET /habits/{id}/history/ - exactly 7 trailing slots
-  /// (true / false / null, oldest first), or null when unavailable.
-  Future<List<bool?>?> _fetchRecent(int habitId) async {
+  /// GET /habits/history_batch/ - ONE call for every habit's history,
+  /// normalized to exactly 7 trailing slots (true / false / null, oldest
+  /// first) per habit id. Habits missing from the batch are simply absent
+  /// (the dots render as "no data" like before).
+  Future<Map<int, List<bool?>>> _fetchRecentMap(List<int> habitIds) async {
     try {
-      final hist = await _api.habitHistory(habitId, days: 10);
-      final flags = hist.days.map<bool?>((d) => d.completed).toList();
-      if (flags.length >= 7) return flags.sublist(flags.length - 7);
-      return <bool?>[
-        ...List<bool?>.filled(7 - flags.length, null),
-        ...flags,
-      ];
+      final batch = await _api.habitHistoryBatch(days: 10);
+      final map = <int, List<bool?>>{};
+      for (final id in habitIds) {
+        final hist = batch.histories[id];
+        if (hist == null) continue;
+        final flags = hist.days.map<bool?>((d) => d.completed).toList();
+        if (flags.length >= 7) {
+          map[id] = flags.sublist(flags.length - 7);
+        } else {
+          map[id] = <bool?>[
+            ...List<bool?>.filled(7 - flags.length, null),
+            ...flags,
+          ];
+        }
+      }
+      return map;
     } catch (_) {
-      return null;
+      // Dots degrade to "no data" when the batch feed is unavailable.
+      return <int, List<bool?>>{};
     }
   }
 

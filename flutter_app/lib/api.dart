@@ -13,6 +13,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -75,7 +76,21 @@ class ApiClient {
   /// Base URL for serving media files (images, avatars, photos).
   /// This is separate from the API base URL because media is served
   /// from the root domain, not under /api/v1/.
-  static const String mediaBaseUrl = 'https://bubaa.pythonanywhere.com';
+  ///
+  /// Derived at runtime from the resolved [baseUrl] (scheme + host + port,
+  /// dropping the /api/v1 path) so a MURA_API_URL override also redirects
+  /// media; falls back to the production host when parsing fails.
+  static String get mediaBaseUrl {
+    try {
+      final Uri uri = Uri.parse(baseUrl);
+      if (uri.hasScheme && uri.host.isNotEmpty) {
+        return uri.replace(path: '', query: null, fragment: null).toString();
+      }
+    } catch (_) {
+      // Fall through to the default host below.
+    }
+    return 'https://bubaa.pythonanywhere.com';
+  }
 
   /// Builds a full URL for media files (avatars, photos, etc.)
   ///
@@ -196,9 +211,12 @@ class ApiClient {
   // -----------------------------------------------------------------------
 
   Uri _uri(String path, [Map<String, String>? query]) {
-    Uri uri = Uri.parse(baseUrl + path);
+    // Absolute URLs (e.g. DRF pagination 'next' links) are fetched as-is.
+    final Uri uri = path.startsWith('http://') || path.startsWith('https://')
+        ? Uri.parse(path)
+        : Uri.parse(baseUrl + path);
     if (query != null && query.isNotEmpty) {
-      uri = uri.replace(
+      return uri.replace(
         queryParameters: <String, String>{...uri.queryParameters, ...query},
       );
     }
@@ -230,8 +248,11 @@ class ApiClient {
       }
     }
     final Uri uri = _uri(path, query);
-    // ignore: avoid_print
-    print('[MURA] -> $method $uri');
+    // Request tracing stays in debug builds only; release logs stay clean.
+    if (kDebugMode) {
+      // ignore: avoid_print
+      print('[MURA] -> $method $uri');
+    }
     try {
       final http.Response res;
       switch (method) {
@@ -270,9 +291,11 @@ class ApiClient {
           throw ArgumentError.value(
               method, 'method', 'Unsupported HTTP method');
       }
+    if (kDebugMode) {
       // ignore: avoid_print
       print('[MURA] <- ${res.statusCode} $method $uri');
-      return res;
+    }
+    return res;
     } on TimeoutException {
       throw ApiException(
           'The server took too long to respond. Please try again.');
@@ -372,6 +395,36 @@ class ApiClient {
     return raw.whereType<Map<String, dynamic>>().map(fromJson).toList();
   }
 
+  /// Fetches every page of a DRF paginated list endpoint ({count, next,
+  /// previous, results}) by following the absolute `next` links (fetched
+  /// directly) up to [maxPages] requests. Returns the raw rows; callers map
+  /// them through their model's fromJson. [query] applies to the first
+  /// request only (the backend echoes filters into each `next` link).
+  Future<List<Map<String, dynamic>>> _fetchAllPages(
+    String path, {
+    int maxPages = 5,
+    Map<String, String>? query,
+  }) async {
+    final List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
+    String? next = path;
+    Map<String, String>? nextQuery = query;
+    for (var page = 0; page < maxPages && next != null; page++) {
+      final dynamic payload =
+          await _jsonRequest('GET', next, query: nextQuery);
+      next = null;
+      nextQuery = null;
+      if (payload is Map<String, dynamic>) {
+        rows.addAll(_listOf<Map<String, dynamic>>(payload, (row) => row));
+        final dynamic rawNext = payload['next'];
+        if (rawNext is String && rawNext.isNotEmpty) next = rawNext;
+      } else if (payload is List<dynamic>) {
+        // Plain (unpaginated) arrays arrive as one shot.
+        rows.addAll(payload.whereType<Map<String, dynamic>>());
+      }
+    }
+    return rows;
+  }
+
   // -----------------------------------------------------------------------
   // Auth & profile
   // -----------------------------------------------------------------------
@@ -455,9 +508,11 @@ class ApiClient {
   // Habits & streaks
   // -----------------------------------------------------------------------
 
-  /// GET /habits/ - active habits with computed streaks.
-  Future<List<Habit>> habits() async =>
-      _listOf<Habit>(await _jsonRequest('GET', '/habits/'), Habit.fromJson);
+  /// GET /habits/ - active habits with computed streaks, all pages.
+  Future<List<Habit>> habits() async {
+    final rows = await _fetchAllPages('/habits/');
+    return rows.map(Habit.fromJson).toList(growable: false);
+  }
 
   /// POST /habits/
   Future<Habit> createHabit({
@@ -519,6 +574,15 @@ class ApiClient {
     ));
   }
 
+  /// GET /habits/history_batch/?days= - every habit's history in one call
+  /// (replaces a per-habit loop of [habitHistory]).
+  Future<HabitHistoryBatch> habitHistoryBatch({int days = 180}) async =>
+      HabitHistoryBatch.fromJson(_asMap(
+        await _jsonRequest('GET', '/habits/history_batch/',
+            query: _cleanQuery(<String, String?>{'days': days.toString()})),
+        '/habits/history_batch/',
+      ));
+
   /// GET /habits/heatmap_data/?weeks=
   Future<HeatmapData> heatmap({int weeks = 26}) async =>
       HeatmapData.fromJson(_asMap(
@@ -531,7 +595,7 @@ class ApiClient {
   // Content hub
   // -----------------------------------------------------------------------
 
-  /// GET /content/items/ with optional filters.
+  /// GET /content/items/ with optional filters; follows every DRF page.
   Future<List<ContentItem>> contentItems({
     String? type,
     String? tag,
@@ -539,22 +603,22 @@ class ApiClient {
     String? source,
     String? sort,
     String? status,
-  }) async =>
-      _listOf<ContentItem>(
-        await _jsonRequest(
-          'GET',
-          '/content/items/',
-          query: _cleanQuery(<String, String?>{
-            'type': type,
-            'tag': tag,
-            'search': search,
-            'source': source,
-            'sort': sort,
-            'status': status,
-          }),
-        ),
-        ContentItem.fromJson,
-      );
+    int? pageSize,
+  }) async {
+    final rows = await _fetchAllPages(
+      '/content/items/',
+      query: _cleanQuery(<String, String?>{
+        'type': type,
+        'tag': tag,
+        'search': search,
+        'source': source,
+        'sort': sort,
+        'status': status,
+        if (pageSize != null) 'page_size': pageSize.toString(),
+      }),
+    );
+    return rows.map(ContentItem.fromJson).toList(growable: false);
+  }
 
   Future<ContentItem> viewContent(int id) async => ContentItem.fromJson(_asMap(
         await _jsonRequest('POST', '/content/items/$id/view/'),
@@ -607,12 +671,14 @@ class ApiClient {
   // Priorities
   // -----------------------------------------------------------------------
 
-  /// GET /priorities/?date= ordered by order.
-  Future<List<Priority>> priorities({String? date}) async => _listOf<Priority>(
-        await _jsonRequest('GET', '/priorities/',
-            query: _cleanQuery(<String, String?>{'date': date})),
-        Priority.fromJson,
-      );
+  /// GET /priorities/?date= ordered by order; follows every DRF page.
+  Future<List<Priority>> priorities({String? date}) async {
+    final rows = await _fetchAllPages(
+      '/priorities/',
+      query: _cleanQuery(<String, String?>{'date': date}),
+    );
+    return rows.map(Priority.fromJson).toList(growable: false);
+  }
 
   /// Alias of [priorities] used by pages (GET /priorities/).
   Future<List<Priority>> listPriorities() => priorities();
@@ -660,12 +726,14 @@ class ApiClient {
   // Goals
   // -----------------------------------------------------------------------
 
-  /// GET /goals/?status=
-  Future<List<Goal>> goals({String? status}) async => _listOf<Goal>(
-        await _jsonRequest('GET', '/goals/',
-            query: _cleanQuery(<String, String?>{'status': status})),
-        Goal.fromJson,
-      );
+  /// GET /goals/?status= - follows every DRF page.
+  Future<List<Goal>> goals({String? status}) async {
+    final rows = await _fetchAllPages(
+      '/goals/',
+      query: _cleanQuery(<String, String?>{'status': status}),
+    );
+    return rows.map(Goal.fromJson).toList(growable: false);
+  }
 
   /// Alias of [goals] used by pages (GET /goals/).
   Future<List<Goal>> listGoals() => goals();
@@ -821,13 +889,14 @@ class ApiClient {
   // Journal entries
   // -----------------------------------------------------------------------
 
-  /// GET /journal/entries/?search= newest first.
-  Future<List<JournalEntry>> journalEntries({String? search}) async =>
-      _listOf<JournalEntry>(
-        await _jsonRequest('GET', '/journal/entries/',
-            query: _cleanQuery(<String, String?>{'search': search})),
-        JournalEntry.fromJson,
-      );
+  /// GET /journal/entries/?search= newest first, all pages.
+  Future<List<JournalEntry>> journalEntries({String? search}) async {
+    final rows = await _fetchAllPages(
+      '/journal/entries/',
+      query: _cleanQuery(<String, String?>{'search': search}),
+    );
+    return rows.map(JournalEntry.fromJson).toList(growable: false);
+  }
 
   /// Alias of [journalEntries] used by pages (GET /journal/entries/).
   Future<List<JournalEntry>> listJournalEntries({String? search}) =>
@@ -874,9 +943,11 @@ class ApiClient {
   // Memories / Achievements
   // -----------------------------------------------------------------------
 
-  /// GET /memories/
-  Future<List<Memory>> memories() async =>
-      _listOf<Memory>(await _jsonRequest('GET', '/memories/'), Memory.fromJson);
+  /// GET /memories/ - all pages.
+  Future<List<Memory>> memories() async {
+    final rows = await _fetchAllPages('/memories/');
+    return rows.map(Memory.fromJson).toList(growable: false);
+  }
 
   /// Alias of [memories] used by pages (GET /memories/).
   Future<List<Memory>> listMemories() => memories();
@@ -963,9 +1034,11 @@ class ApiClient {
   // Reminders
   // -----------------------------------------------------------------------
 
-  /// GET /reminders/
-  Future<List<Reminder>> reminders() async => _listOf<Reminder>(
-      await _jsonRequest('GET', '/reminders/'), Reminder.fromJson);
+  /// GET /reminders/ - all pages.
+  Future<List<Reminder>> reminders() async {
+    final rows = await _fetchAllPages('/reminders/');
+    return rows.map(Reminder.fromJson).toList(growable: false);
+  }
 
   /// POST /reminders/ ([time] as HH:MM, [days] Mon=0, empty means daily).
   Future<Reminder> createReminder({
@@ -1007,12 +1080,11 @@ class ApiClient {
   // Notification feed (pushed Signo events)
   // -----------------------------------------------------------------------
 
-  /// GET /notifications/ - newest first.
-  Future<List<AppNotification>> notifications() async =>
-      _listOf<AppNotification>(
-        await _jsonRequest('GET', '/notifications/'),
-        AppNotification.fromJson,
-      );
+  /// GET /notifications/ - newest first, all pages.
+  Future<List<AppNotification>> notifications() async {
+    final rows = await _fetchAllPages('/notifications/');
+    return rows.map(AppNotification.fromJson).toList(growable: false);
+  }
 
   /// POST /notifications/read_all/ - clear the unread badge.
   Future<void> markAllNotificationsRead() =>

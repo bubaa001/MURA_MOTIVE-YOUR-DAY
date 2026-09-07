@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from reminders.models import NotificationLog
-from reminders.signo import SignoError, send_event
+from reminders.signo import send_user_event
 
 from .models import Goal
 from .serializers import GoalSerializer
@@ -29,19 +29,25 @@ class GoalViewSet(viewsets.ModelViewSet):
         goal.status = "achieved"
         goal.progress = 100
         goal.save(update_fields=["status", "progress"])
+        title = f"Goal achieved: {goal.title}"
+        body = "Promise kept to yourself. Log it and set the next one."
+        # In-app record first so it survives a push failure; the push goes to
+        # the user's personal topic only — the global namespace would
+        # broadcast the goal title to every other user's device.
+        NotificationLog.objects.create(
+            user=goal.user,
+            title=title,
+            body=body,
+            kind="goal_achieved",
+        )
         try:
-            send_event(
-                title=f"Goal achieved: {goal.title}",
-                body="Promise kept to yourself. Log it and set the next one.",
+            send_user_event(
+                goal.user,
+                title,
+                body,
                 priority="high",
                 payload={"kind": "goal_achieved", "goalId": goal.id},
             )
-            NotificationLog.objects.create(
-                user=goal.user,
-                title=f"Goal achieved: {goal.title}",
-                body="Promise kept to yourself. Log it and set the next one.",
-                kind="goal_achieved",
-            )
-        except SignoError:
+        except Exception:
             pass  # a push failure must never fail the achievement
         return Response(GoalSerializer(goal).data)

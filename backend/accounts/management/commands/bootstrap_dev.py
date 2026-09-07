@@ -1,6 +1,6 @@
 """One-shot dev environment setup.
 
-    python manage.py bootstrap_dev            # user buba / buba
+    python manage.py bootstrap_dev            # prints a generated dev password
     python manage.py bootstrap_dev --username me --password s3cret
 
 Creates (or updates) the personal account, seeds starter content, and
@@ -8,6 +8,7 @@ installs a small demo set of habits/priorities/reminders so the app has
 something to show on first launch.
 """
 import datetime as dt
+import secrets
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
@@ -23,7 +24,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--username", default="buba")
-        parser.add_argument("--password", default="buba")
+        # Omit --password to get a generated one (never ship a known default —
+        # the old "buba/buba" default leaked into production docs).
+        parser.add_argument("--password", default="")
         parser.add_argument("--email", default="buba@mura.local")
 
     def handle(self, *args, **options):
@@ -37,10 +40,11 @@ class Command(BaseCommand):
                 "is_superuser": True,
             },
         )
+        password = options["password"] or "dev-" + secrets.token_urlsafe(12)
         if created:
-            user.set_password(options["password"])
+            user.set_password(password)
             user.save()
-            self.stdout.write(self.style.SUCCESS(f"Created user '{user.username}' ({options['password']})."))
+            self.stdout.write(self.style.SUCCESS(f"Created user '{user.username}' (password: {password})."))
         else:
             # Existing local demo databases created by an earlier version need
             # the same access level for the staff-only Feeder dashboard.
