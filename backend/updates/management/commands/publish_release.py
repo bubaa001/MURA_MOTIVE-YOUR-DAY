@@ -68,18 +68,24 @@ class Command(BaseCommand):
     help = "Publish an APK so installed apps are offered the update."
 
     def add_arguments(self, parser):
-        parser.add_argument("--apk", required=True, help="Path to app-release.apk")
+        parser.add_argument("--apk", default="", help="Path to app-release.apk (skipped with --from-url)")
         parser.add_argument("--version-name", required=True)
         parser.add_argument("--version-code", type=int, required=True)
         parser.add_argument("--notes", default="", help="Short changelog shown in the app.")
         parser.add_argument("--github", default=os.environ.get("MURA_GITHUB_REPO", ""),
                             help="owner/repo to host the APK as a Release asset (fast CDN downloads).")
+        parser.add_argument("--from-url", default="",
+                            help="Skip the upload: point the manifest at an already-hosted APK "
+                                 "(e.g. the GitHub release asset committed/pushed earlier).")
+        parser.add_argument("--announce", action="store_true",
+                            help="Push an 'update available' notification to every active FCM device.")
 
     def handle(self, *args, **options):
         apk_path = options["apk"]
-        if not os.path.exists(apk_path):
+        from_url = options["from_url"]
+        if not from_url and not os.path.exists(apk_path):
             raise CommandError(f"APK not found: {apk_path}")
-        size_mb = os.path.getsize(apk_path) / (1024 * 1024)
+        size_mb = (os.path.getsize(apk_path) / (1024 * 1024)) if not from_url else 0.0
 
         release, created = Release.objects.get_or_create(
             version_code=options["version_code"],
@@ -89,7 +95,10 @@ class Command(BaseCommand):
             release.version_name = options["version_name"]
             release.notes = options["notes"]
 
-        if options["github"]:
+        if from_url:
+            release.apk_url_override = from_url
+            self.stdout.write(f"Using hosted APK: {from_url}")
+        elif options["github"]:
             token = os.environ.get("GITHUB_TOKEN", "")
             if not token:
                 raise CommandError("--github given but GITHUB_TOKEN env var is not set.")
@@ -101,9 +110,37 @@ class Command(BaseCommand):
                 release.apk.save(f"mura-{options['version_name']}.apk", fh, save=False)
         release.save()
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"{'Published' if created else 'Updated'} v{release.version_name} "
-                f"(code {release.version_code}, {size_mb:.1f} MB)."
-            )
-        )
+        announced = 0
+        if options["announce"]:
+            announced = self._announce(release)
+
+        msg = (f"{'Published' if created else 'Updated'} v{release.version_name} "
+               f"(code {release.version_code}, {size_mb:.1f} MB).")
+        if options["announce"]:
+            msg += f" Announced to {announced} device(s)."
+        self.stdout.write(self.style.SUCCESS(msg))
+
+    def _announce(self, release: Release) -> int:
+        """Push 'update available' to every active device; returns delivered count."""
+        from accounts.models import DeviceToken
+        from push import FcmError, fcm_configured, is_unregistered, send_fcm
+
+        if not fcm_configured():
+            self.stdout.write(self.style.WARNING(
+                "FCM_* env vars missing — announced in-app feed only."))
+            return 0
+        title = f"MURA {release.version_name} is out"
+        body = (release.notes or "Tap to download the update.").strip()
+        payload = {"kind": "update", "version_code": release.version_code}
+        delivered = 0
+        for token in DeviceToken.objects.filter(is_active=True).values_list("token", flat=True):
+            try:
+                send_fcm(token, title, body, payload=payload)
+                delivered += 1
+            except FcmError as exc:
+                if is_unregistered(exc):
+                    DeviceToken.objects.filter(token=token).update(is_active=False)
+                else:
+                    self.stdout.write(self.style.WARNING(
+                        f"push failed for {token[:12]}…: {exc}"))
+        return delivered

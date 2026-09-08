@@ -149,15 +149,41 @@ is lost — the in-app notification feed still records events).
 
 ## 6. Publishing an app update
 
+Two ways to ship a build. Either way the app itself notices the new version
+within seconds of launch (or login) and offers the download, which streams
+from GitHub's CDN (fast) and installs without leaving MURA.
+
+**A. All-in-one (local machine, uploads + publishes + announces):**
+
 ```powershell
 # bump version in flutter_app/pubspec.yaml, build, then:
 cd backend
 $env:GITHUB_TOKEN = "<token>"
 .venv\Scripts\python manage.py publish_release `
     --apk ..\flutter_app\build\app\outputs\flutter-apk\app-release.apk `
-    --version-name 1.3.1 --version-code 10 --notes "what changed" `
-    --github bubaa001/MURA_MOTIVE-YOUR-DAY
+    --version-name 1.4.3 --version-code 13 --notes "what changed" `
+    --github bubaa001/MURA_MOTIVE-YOUR-DAY --announce
 ```
+
+`--announce` pushes an "update available" notification through FCM to
+every active device, so users hear about the release immediately instead
+of waiting for their next app launch.
+
+**B. APK already hosted (e.g. release asset pushed earlier):**
+
+```bash
+python manage.py publish_release \
+    --from-url "https://github.com/bubaa001/MURA_MOTIVE-YOUR-DAY/releases/download/v1.4.2/MURA-v1.4.2.apk" \
+    --version-name 1.4.2 --version-code 12 \
+    --notes "Push notifications fixed, Automations, journal delete" \
+    --announce
+```
+
+`--from-url` skips the upload entirely — the manifest just points at the
+hosted file. Ideal on PythonAnywhere (no 55 MB upload through the tunnel):
+push the release asset from the local machine, then run this on PA.
+
+Both commands are idempotent per version_code (safe to re-run).
 
 APKs are hosted on GitHub Releases — **never commit APKs to git** (the
 `.gitignore` now blocks `*.apk`).

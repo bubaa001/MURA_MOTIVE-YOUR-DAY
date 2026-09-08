@@ -146,6 +146,9 @@ class _MuraAppState extends State<MuraApp> {
           setState(() {
             _hasToken = true;
           });
+          // Signing in on an old build may have skipped the launch check
+          // (no session existed then) — check now that a session exists.
+          Future<void>.delayed(const Duration(seconds: 3), maybePromptForUpdate);
         },
       );
     }
@@ -175,6 +178,8 @@ class _MuraAppState extends State<MuraApp> {
                   setState(() {
                     _hasToken = true;
                   });
+                  Future<void>.delayed(
+                      const Duration(seconds: 3), maybePromptForUpdate);
                 },
               ),
           '/home': (_) => HomeShell(),

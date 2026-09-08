@@ -16,6 +16,7 @@ import java.io.File
 import org.json.JSONArray
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
@@ -147,11 +148,11 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "downloadStatus" -> {
-                        val id = call.argument<Long>("id") ?: -1L
+                        val id = longArg(call, "id")
                         result.success(downloadStatus(id))
                     }
                     "finishDownload" -> {
-                        val id = call.argument<Long>("id") ?: -1L
+                        val id = longArg(call, "id")
                         finishDownloadedApk(id, result)
                     }
                     "installApk" -> {
@@ -222,6 +223,14 @@ class MainActivity : FlutterActivity() {
     private fun callVersionHint(filename: String): String {
         val m = Regex("mura-([0-9.]+)").find(filename)
         return m?.groupValues?.get(1) ?: ""
+    }
+
+    // Dart ints arrive as Integer when small and Long when large — the
+    // direct argument<Long>() cast throws for small ids (download ids from
+    // DownloadManager are small sequential numbers).
+    private fun longArg(call: MethodCall, key: String): Long {
+        val v = call.argument<Number>(key) ?: return -1L
+        return v.toLong()
     }
 
     private fun downloadStatus(id: Long): Map<String, Any> {
