@@ -104,6 +104,23 @@ class _MuraAppState extends State<MuraApp> {
     setState(() => _hasToken = false);
   }
 
+  bool _pushKickStarted = false;
+
+  /// Keeps the FCM device token registered while a session exists. The
+  /// registration is an idempotent upsert, so repeating it is safe; the
+  /// guard only stops redundant attempts within one app run.
+  void _ensurePushRegistered() {
+    if (_pushKickStarted) return;
+    _pushKickStarted = true;
+    unawaited(registerForPush());
+    // Re-register periodically while the shell is alive: token rotation or
+    // a failed first attempt must never silently stop push delivery.
+    Stream<void>.periodic(const Duration(minutes: 6)).listen((_) {
+      if (!mounted || !_hasToken) return;
+      unawaited(registerForPush());
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget homeWidget;
@@ -115,8 +132,11 @@ class _MuraAppState extends State<MuraApp> {
         ),
       );
     } else if (_hasToken) {
+      // Push registration belongs to the session state, not build(): a
+      // token may have failed to register earlier (throttled/offline) and
+      // without a registered device NO push can ever reach this phone.
+      _ensurePushRegistered();
       homeWidget = HomeShell();
-      unawaited(registerForPush());
     } else {
       homeWidget = OnboardingFlow(
         authEnabled: true,
@@ -288,6 +308,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       AppRefresh.instance.requestRefresh();
       _refreshUnread();
       _refreshUser();
+      // Re-register the FCM device token (idempotent upsert): an earlier
+      // attempt may have failed (throttled or offline) and without a
+      // registered token no push can ever be delivered to this phone.
+      unawaited(registerForPush());
     }
   }
 

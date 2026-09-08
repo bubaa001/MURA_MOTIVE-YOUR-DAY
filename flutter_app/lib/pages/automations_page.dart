@@ -82,6 +82,16 @@ const List<_Template> _templates = <_Template>[
     messageTitle: 'Habits still open',
     messageBody: 'Close the day strong — you still have time.',
   ),
+  _Template(
+    id: 'custom_reminder',
+    emoji: '⏰',
+    title: 'Remind me at a time',
+    subtitle: 'Your message, every day at the hour you pick',
+    triggerType: 'daily_nudge',
+    triggerConfig: <String, dynamic>{'time': '08:00', 'only_if_incomplete': false},
+    messageTitle: 'Your reminder',
+    messageBody: 'Tap to edit this message.',
+  ),
 ];
 
 IconData _triggerIcon(String type) {
@@ -156,6 +166,12 @@ class _AutomationsPageState extends State<AutomationsPage> {
   }
 
   Future<void> _createFromTemplate(_Template t) async {
+    // "Remind me at a time" needs the user's own time + message before it is
+    // useful, so it opens the editor prefilled instead of creating instantly.
+    if (t.id == 'custom_reminder') {
+      await _openEditor(template: t);
+      return;
+    }
     try {
       await api.createAutomation(
         name: t.title,
@@ -168,8 +184,8 @@ class _AutomationsPageState extends State<AutomationsPage> {
       );
       _toast('${t.emoji}  "${t.title}" is live');
       _load();
-    } catch (_) {
-      _toast('Could not create the automation.');
+    } catch (e) {
+      _toast('Could not create the automation: ${friendlyError(e)}');
     }
   }
 
@@ -197,18 +213,19 @@ class _AutomationsPageState extends State<AutomationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      floatingActionButton: _rules.isEmpty || _busy
-          ? null
-          : FloatingActionButton.extended(
-              heroTag: 'automations-fab',
-              onPressed: () => _openEditor(),
-              backgroundColor: _pal.amberDeep,
-              foregroundColor: _pal.onAmber,
-              elevation: 3,
-              icon: const Icon(Icons.add, size: 24),
-              label: const Text('New automation',
-                  style: TextStyle(fontWeight: FontWeight.w800)),
-            ),
+      // Always available: hiding the FAB while empty/loading made the page
+      // look broken ("create automation btn is not working") because the
+      // only creation entry point vanished behind a loading spinner.
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'automations-fab',
+        onPressed: _openEditor,
+        backgroundColor: _pal.amberDeep,
+        foregroundColor: _pal.onAmber,
+        elevation: 3,
+        icon: const Icon(Icons.add, size: 24),
+        label: const Text('New automation',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+      ),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(

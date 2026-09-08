@@ -176,6 +176,10 @@ REST_FRAMEWORK = {
     ),
     # AnonRate throttles brute-force login attempts; user rate is a safety net
     # against a single client hammering the one shared PythonAnywhere worker.
+    # The mobile app bursts ~15 requests per tab switch / app resume (every
+    # mounted page refetches), so 120/min throttled NORMAL use and broke
+    # automations, journal reloads and push-device registration. 600/min =
+    # 10/s still protects the worker but never trips a real user.
     "DEFAULT_THROTTLE_CLASSES": (
         ()
         if _in_test_run
@@ -186,9 +190,14 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_THROTTLE_RATES": {
         "anon": "30/min",
-        "user": "120/min",
+        "user": "600/min",
     },
 }
+
+# PythonAnywhere terminates HTTPS at its proxy and forwards plain HTTP to
+# Django; without this header request.build_absolute_uri() (avatars, content
+# artwork, memories) emits http:// URLs that Android blocks on release builds.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=1),

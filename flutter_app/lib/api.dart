@@ -104,8 +104,20 @@ class ApiClient {
   ///   - relative paths -> prepends mediaBaseUrl and ensures leading slash
   String getMediaUrl(String? path) {
     if (path == null || path.isEmpty) return '';
-    // If it's already an absolute URL, return as-is.
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    // If it's already an absolute URL, upgrade http -> https for public
+    // hosts (Android release builds block cleartext; localhosts keep http).
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      if (path.startsWith('http://')) {
+        final String? host = Uri.tryParse(path)?.host;
+        final bool local = host == null ||
+            host == 'localhost' ||
+            host.startsWith('127.') ||
+            host.startsWith('10.') ||
+            host.startsWith('192.168.');
+        if (!local) return 'https://${path.substring('http://'.length)}';
+      }
+      return path;
+    }
     // Ensure the path starts with a slash.
     final String normalized = path.startsWith('/') ? path : '/$path';
     return '$mediaBaseUrl$normalized';
@@ -344,6 +356,12 @@ class ApiClient {
   }
 
   ApiException _errorFrom(http.Response response) {
+    // Throttle responses confuse users ("wtf is that") — say it plainly.
+    if (response.statusCode == 429) {
+      return ApiException(
+          'You are going a bit too fast. Wait a few seconds and try again.',
+          status: 429);
+    }
     String message = 'Request failed (${response.statusCode}).';
     try {
       final String text = utf8.decode(response.bodyBytes);

@@ -103,6 +103,11 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
   String? _status;
   final Set<int> _engagingIds = <int>{};
 
+  /// Which list the page shows: the user's own journal entries (their
+  /// journal — the default) or the community story feed. Saved entries
+  /// were invisible before because only the story feed was ever listed.
+  bool _showMine = true;
+
   @override
   void initState() {
     super.initState();
@@ -139,6 +144,17 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
     });
     try {
       final q = _search.text.trim();
+      if (_showMine) {
+        // The user's own entries — what the Write button creates.
+        final mine =
+            await api.journalEntries(search: q.isEmpty ? null : q);
+        if (!mounted) return;
+        setState(() {
+          _entries = mine;
+          _busy = false;
+        });
+        return;
+      }
       final stories = await api.contentItems(
         type: 'journal_story',
         search: q.isEmpty ? null : q,
@@ -183,6 +199,9 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
     bool like = false,
     bool save = false,
   }) async {
+    // Community engagement endpoints only exist for stories — personal
+    // entries have no like/save/read plumbing on the server.
+    if (_showMine) return;
     if (_engagingIds.contains(entry.id)) return;
     setState(() => _engagingIds.add(entry.id));
     try {
@@ -269,6 +288,9 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
       builder: (_) => const _EntryEditorSheet(),
     );
     if (saved == true && mounted) {
+      // A freshly saved entry is the user's own — jump straight to the
+      // My Entries list so they SEE it (invisible saves were the bug).
+      setState(() => _showMine = true);
       await _loadEntries();
       if (mounted) _toast(context, 'Entry saved ✨');
     }
@@ -292,7 +314,9 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'A living feed of journeys, lessons, and turning points.',
+                          _showMine
+                              ? 'Your private journal — write, reflect, keep.'
+                              : 'A living feed of journeys, lessons, and turning points.',
                           style: TextStyle(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
@@ -327,7 +351,8 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
-                    hintText: 'Search stories',
+                    hintText:
+                        _showMine ? 'Search your entries' : 'Search stories',
                     prefixIcon: const Icon(Icons.search_rounded),
                     filled: true,
                     fillColor:
@@ -339,8 +364,9 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
                   ),
                 ),
               ),
+            _buildMineStoriesToggle(),
             _buildMemoryStrip(),
-            _buildStoryFilters(),
+            if (!_showMine) _buildStoryFilters(),
             Expanded(
               child: RefreshIndicator(
                 color: _pal.amber,
@@ -363,6 +389,61 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
         icon: const Icon(Icons.edit_outlined, size: 21),
         label: const Text('Write',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+      ),
+    );
+  }
+
+  /// Journal vs community: your own entries are the page's primary content.
+  Widget _buildMineStoriesToggle() {
+    Widget side(String label, bool mine) {
+      final selected = _showMine == mine;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            if (_showMine == mine) return;
+            setState(() {
+              _showMine = mine;
+              _expandedStoryId = null;
+            });
+            _loadEntries();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 9),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected
+                  ? _pal.amber.withValues(alpha: .16)
+                  : _pal.field,
+              borderRadius: BorderRadius.horizontal(
+                left: mine ? const Radius.circular(13) : Radius.zero,
+                right: mine ? Radius.zero : const Radius.circular(13),
+              ),
+              border: Border.all(
+                  color: selected ? _pal.amber : _pal.stroke),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? _pal.amber : _pal.textDim,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .4,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 6),
+      child: Row(
+        children: [
+          side('MY ENTRIES', true),
+          side('STORIES', false),
+        ],
       ),
     );
   }
@@ -524,11 +605,16 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
               Icon(
                   searching
                       ? Icons.search_off_rounded
-                      : Icons.menu_book_rounded,
+                      : (_showMine
+                          ? Icons.edit_note_rounded
+                          : Icons.menu_book_rounded),
                   color: _pal.textDim.withValues(alpha: .7),
                   size: 38),
               const SizedBox(height: 12),
-              Text(searching ? 'No matches' : 'No entries yet',
+              Text(
+                  searching
+                      ? 'No matches'
+                      : (_showMine ? 'Nothing written yet' : 'No stories yet'),
                   style: TextStyle(
                       color: _pal.text,
                       fontSize: 15.5,
@@ -537,7 +623,9 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
               Text(
                 searching
                     ? 'Try a different word or phrase.'
-                    : 'Stories are curated through TheFeeder.',
+                    : (_showMine
+                        ? 'Tap Write and put today\'s lesson on record.'
+                        : 'Stories are curated through TheFeeder.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _pal.textDim, fontSize: 12.5, height: 1.4),
               ),
@@ -552,6 +640,7 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
       separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (ctx, i) => _EntryCard(
         entry: entries[i],
+        personal: _showMine,
         expanded: _expandedStoryId == entries[i].id,
         onDelete: () => _deleteEntry(entries[i]),
         onLike: () => _engage(entries[i], like: true),
@@ -579,6 +668,10 @@ class _EntryCard extends StatelessWidget {
   final bool engaging;
   final bool expanded;
 
+  /// True when this is the user's own journal entry: the like/save/read
+  /// community actions are hidden and the author row shows their mood.
+  final bool personal;
+
   const _EntryCard({
     required this.entry,
     required this.onDelete,
@@ -587,6 +680,7 @@ class _EntryCard extends StatelessWidget {
     required this.onSave,
     required this.engaging,
     required this.expanded,
+    this.personal = false,
   });
 
   @override
@@ -694,9 +788,11 @@ class _EntryCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      entry.authorName.isEmpty
-                          ? 'MURA community'
-                          : entry.authorName,
+                        personal
+                            ? 'You'
+                            : (entry.authorName.isEmpty
+                                ? 'MURA community'
+                                : entry.authorName),
                       style: TextStyle(
                           color: scheme.onSurfaceVariant,
                           fontSize: 12,
@@ -726,52 +822,68 @@ class _EntryCard extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(
-                      entry.read
-                          ? Icons.done_all_rounded
-                          : Icons.menu_book_outlined,
-                      size: 16,
-                      color: entry.read ? pal.teal : pal.textDim),
-                  const SizedBox(width: 5),
-                  Text(entry.read ? 'Read' : 'Not read',
-                      style: TextStyle(color: pal.textDim, fontSize: 10)),
-                  const SizedBox(width: 14),
-                  Icon(Icons.visibility_outlined, size: 16, color: pal.textDim),
-                  const SizedBox(width: 4),
-                  Text('${entry.viewCount}',
-                      style: TextStyle(color: pal.textDim, fontSize: 10)),
-                  const SizedBox(width: 14),
-                  IconButton(
-                    onPressed: engaging ? null : onLike,
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                        entry.liked
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        size: 18,
-                        color: entry.liked ? Colors.pinkAccent : pal.textDim),
-                    tooltip: entry.liked ? 'Unlike' : 'Like',
-                  ),
-                  Text('${entry.likeCount}',
-                      style: TextStyle(color: pal.textDim, fontSize: 10)),
-                  IconButton(
-                    onPressed: engaging ? null : onSave,
-                    visualDensity: VisualDensity.compact,
-                    icon: engaging
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            entry.saved
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                            size: 18,
-                            color: entry.saved ? pal.amber : pal.textDim,
-                          ),
-                    tooltip:
-                        entry.saved ? 'Remove from saved' : 'Save for later',
+                  if (!personal) ...[
+                    Icon(
+                        entry.read
+                            ? Icons.done_all_rounded
+                            : Icons.menu_book_outlined,
+                        size: 16,
+                        color: entry.read ? pal.teal : pal.textDim),
+                    const SizedBox(width: 5),
+                    Text(entry.read ? 'Read' : 'Not read',
+                        style:
+                            TextStyle(color: pal.textDim, fontSize: 10)),
+                    const SizedBox(width: 14),
+                    Icon(Icons.visibility_outlined,
+                        size: 16, color: pal.textDim),
+                    const SizedBox(width: 4),
+                    Text('${entry.viewCount}',
+                        style: TextStyle(color: pal.textDim, fontSize: 10)),
+                    const SizedBox(width: 14),
+                  ],
+                  if (!personal)
+                    IconButton(
+                      onPressed: engaging ? null : onLike,
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                          entry.liked
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          size: 18,
+                          color: entry.liked
+                              ? Colors.pinkAccent
+                              : pal.textDim),
+                      tooltip: entry.liked ? 'Unlike' : 'Like',
+                    ),
+                  if (!personal)
+                    Text('${entry.likeCount}',
+                        style: TextStyle(color: pal.textDim, fontSize: 10)),
+                  if (!personal)
+                    IconButton(
+                      onPressed: engaging ? null : onSave,
+                      visualDensity: VisualDensity.compact,
+                      icon: engaging
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Icon(
+                              entry.saved
+                                  ? Icons.bookmark_rounded
+                                  : Icons.bookmark_border_rounded,
+                              size: 18,
+                              color: entry.saved ? pal.amber : pal.textDim,
+                            ),
+                      tooltip: entry.saved
+                          ? 'Remove from saved'
+                          : 'Save for later',
+                    ),
+                  const Spacer(),
+                  Text(
+                    personal ? _fmtDay(entry.createdAt) : _fmtDateTime(entry.createdAt),
+                    style: TextStyle(color: pal.textDim, fontSize: 10),
                   ),
                 ],
               ),
