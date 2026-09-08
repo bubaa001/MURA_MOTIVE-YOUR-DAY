@@ -125,9 +125,9 @@ Notes:
 
 ## 5. Push notifications — architecture
 
-MURA now has TWO push channels; `notify_user()` picks per user automatically:
+Google FCM is MURA's **only** push channel (Signo was removed in v1.4.2):
 
-1. **FCM (primary, v1.4.0+):** every Android phone with the app installed
+1. **FCM (all pushes, v1.4.0+):** every Android phone with the app installed
    receives pushes natively — **no third-party app needed**. The app
    registers its Firebase token at `POST /me/devices/` after sign-in; the
    backend sends through the FCM HTTP v1 API using a service-account key.
@@ -136,16 +136,14 @@ MURA now has TWO push channels; `notify_user()` picks per user automatically:
      Project settings → Service accounts → Generate new private key.
    - Dead tokens (app uninstalled / logged out) are auto-deactivated on the
      first failed send.
-2. **Signo (fallback + broadcasts):** when a user has NO active FCM device,
-   personal events fall back to their per-user Signo topic, so existing
-   Signo subscribers keep receiving pushes after the app update. The
-   **global namespace** (`SIGNO_NAMESPACE`) stays studio-broadcasts-only.
+   - Requires the `cryptography` package on the server (`pip install -r
+     requirements.txt`) — without it the RS256 JWT minting raises
+     `NotImplementedError`; since commit 5ad450b that surfaces as a logged
+     FcmError instead of a 500.
 
-Studio campaigns send through BOTH audiences (all FCM devices + all Signo
-subscribers) — they are different people, not duplicates.
-
-If the FCM_* env vars are missing, the FCM leg is skipped silently and the
-system behaves exactly as before (Signo only).
+Studio campaigns send to every active FCM device. If the FCM_* env vars
+are missing, sends are skipped with a warning log (nothing 500s, nothing
+is lost — the in-app notification feed still records events).
 
 ---
 
