@@ -20,7 +20,7 @@ class Reminder(models.Model):
     days = models.JSONField(default=list, blank=True, help_text="0=Mon..6=Sun. Empty list means every day.")
     category = models.CharField(max_length=20, choices=CATEGORIES, default="progress")
     is_active = models.BooleanField(default=True)
-    last_pushed_date = models.DateField(null=True, blank=True, help_text="Last date this reminder was pushed via Signo (dedup for the push loop).")
+    last_pushed_date = models.DateField(null=True, blank=True, help_text="Last date this reminder was pushed via FCM (dedup for the push loop).")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -32,8 +32,8 @@ class Reminder(models.Model):
 
 class PushCampaign(models.Model):
     """A broadcast push composed in TheFeeder and sent to every device via
-    Signo — either immediately or on a natural schedule (daily morning /
-    chosen weekday such as Sunday)."""
+    FCM (Google) — either immediately or on a natural schedule (daily
+    morning / chosen weekday such as Sunday)."""
 
     SCHEDULES = [
         ("now", "Send once, now"),
@@ -63,7 +63,7 @@ class PushCampaign(models.Model):
 
 
 class NotificationLog(models.Model):
-    """One pushed Signo event, kept so the app can show a notification feed."""
+    """One pushed event, kept so the app can show a notification feed."""
 
     KINDS = [
         ("reminder", "Reminder"),
