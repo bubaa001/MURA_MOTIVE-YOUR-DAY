@@ -107,9 +107,11 @@ def send_fcm(
 ) -> dict[str, Any] | None:
     """Push to one device. Returns None when FCM is unconfigured.
 
-    Raises [FcmError] on any send failure so the caller can decide whether
-    the token should be deactivated; never fails silently *and* never
-    blocks the caller — the shared notify_user() wrapper owns try/except.
+    Raises [FcmError] on ANY send failure — including the OAuth token
+    minting step (network down, service-account key rejected, or the
+    cryptography package missing so RS256 cannot sign) — so callers log
+    it instead of the request 500ing. Never blocks the caller: the shared
+    notify_user() wrapper owns try/except.
     """
     if not fcm_configured():
         return None
@@ -121,22 +123,25 @@ def send_fcm(
     if payload:
         message["data"] = {k: str(v) for k, v in payload.items()}
 
-    req = urllib.request.Request(
-        FCM_URL_TMPL.format(project_id=settings.FCM_PROJECT_ID),
-        data=json.dumps({"message": message}).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {_service_account_access_token()}",
-        },
-        method="POST",
-    )
     try:
+        access_token = _service_account_access_token()
+        req = urllib.request.Request(
+            FCM_URL_TMPL.format(project_id=settings.FCM_PROJECT_ID),
+            data=json.dumps({"message": message}).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            },
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
         raise FcmError(f"HTTP {exc.code}: {detail[:300]}") from exc
-    except Exception as exc:  # network / parse failures
+    except FcmError:
+        raise
+    except Exception as exc:  # network / OAuth / signing failures
         raise FcmError(str(exc)) from exc
 
 
