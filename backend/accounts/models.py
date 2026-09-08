@@ -76,8 +76,8 @@ class DeviceToken(models.Model):
     """One FCM registration token for a device of this account.
 
     The mobile app registers its Firebase token after sign-in; pushes go
-    FCM-first (works on every Android phone, no third-party app needed)
-    and fall back to the legacy Signo topic when no device is registered.
+    to every registered device via FCM (Google) — MURA's own push
+    channel, no third-party app needed.
     """
 
     PLATFORMS = [

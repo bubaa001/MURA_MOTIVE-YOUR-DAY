@@ -9,7 +9,7 @@ router = DefaultRouter()
 router.register("items", views.ExtractedItemViewSet, basename="feeder-item")
 # Staff studio: full control over the app's live content hub.
 router.register("content", ContentManageViewSet, basename="feeder-content")
-# Studio Push: compose + send broadcast notifications via Signo.
+# Studio Push: compose + send broadcast notifications via FCM (Google push).
 router.register("push", PushCampaignViewSet, basename="feeder-push")
 
 urlpatterns = router.urls

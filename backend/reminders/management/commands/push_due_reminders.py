@@ -1,4 +1,4 @@
-"""Push due reminders to each user (FCM devices first, Signo fallback).
+"""Push due reminders to each user (FCM — Google push notifications).
 
 Designed for PythonAnywhere scheduled tasks, which fire hourly at best:
 a reminder is due when the current local time has PASSED its HH:MM today
@@ -26,7 +26,7 @@ CATCHUP_WINDOW = dt.timedelta(hours=2)
 
 
 class Command(BaseCommand):
-    help = "Push reminders due right now (FCM first, Signo topic fallback)."
+    help = "Push reminders due right now (FCM first, FCM delivery)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -71,8 +71,7 @@ class Command(BaseCommand):
             if options["dry_run"]:
                 self.stdout.write(f"would push: {label}")
                 continue
-            # "time-sensitive" is a Signo priority; FCM carries the same
-            # nudge through the device notification itself.
+            # FCM carries the urgency through the device notification itself.
             result = notify_user(
                 reminder.user,
                 reminder.title,
@@ -95,8 +94,8 @@ class Command(BaseCommand):
                 )
             else:
                 # Recorded in the in-app feed even though the user has no
-                # active push channel yet (no FCM device, no Signo topic).
+                # registered FCM device yet.
                 skipped += 1
-                self.stdout.write(f"logged only (no device/channel): {label}")
+                self.stdout.write(f"logged only (no device): {label}")
 
         self.stdout.write(self.style.SUCCESS(f"sent={sent} skipped={skipped} failed={failed}"))

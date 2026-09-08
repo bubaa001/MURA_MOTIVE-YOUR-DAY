@@ -45,7 +45,7 @@ class GoalViewSet(viewsets.ModelViewSet):
             body=body,
             kind="goal_achieved",
         )
-        # FCM-first push (Signo fallback); a push failure must never fail
+        # FCM push (best-effort); a push failure must never fail
         # the achievement.
         notify_user(
             goal.user,

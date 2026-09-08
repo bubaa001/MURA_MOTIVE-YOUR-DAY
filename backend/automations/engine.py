@@ -2,7 +2,7 @@
 
 Reactive flow: the triggering view calls fire_event() AFTER its atomic
 block commits — the same discipline the codebase already follows for
-NotificationLog/Signo side effects. Everything here is best-effort: a
+NotificationLog/push side effects. Everything here is best-effort: a
 broken rule must never fail a habit toggle or a goal completion.
 """
 

@@ -19,7 +19,7 @@ STREAK_MILESTONES = (3, 7, 14, 30, 60, 100, 365)
 
 def _celebrate_streak(user, habit: Habit, streak: int) -> None:
     """Record a streak milestone in the in-app feed and, best-effort, push it.
-    The NotificationLog write must survive a Signo failure, so it gets its
+    The NotificationLog write must survive a push failure, so it gets its
     own try block and happens first."""
     if streak not in STREAK_MILESTONES:
         return
@@ -31,7 +31,7 @@ def _celebrate_streak(user, habit: Habit, streak: int) -> None:
         body=body,
         kind="streak_milestone",
     )
-    # FCM-first push (Signo fallback); best-effort — the milestone is
+    # FCM push (best-effort) — the milestone is
     # already recorded above.
     notify_user(
         user,

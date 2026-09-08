@@ -2,7 +2,7 @@
 
 The mobile app registers FCM device tokens at /me/devices/; this module
 delivers pushes through Google's OAuth-secured HTTP v1 API so they arrive
-on every Android phone — no third-party app (like Signo) needs to be
+on every Android phone — no third-party app needs to be
 installed on the user's device.
 
 Configuration (backend .env, never committed — see .env.example):
@@ -11,7 +11,7 @@ Configuration (backend .env, never committed — see .env.example):
     FCM_PRIVATE_KEY    the service account's private key (PEM, with \n escapes)
 
 Until those are set, send_fcm() returns None (push disabled) — same
-best-effort contract as Signo, so no caller needs to change behaviour.
+best-effort contract; callers keep working when push is unconfigured.
 """
 
 from __future__ import annotations

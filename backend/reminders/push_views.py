@@ -1,21 +1,20 @@
 """TheFeeder Push section: compose + send broadcast notifications.
 
-Campaigns go to every registered app device (FCM) AND every Signo
-subscriber — the two audiences are different people, unlike personal
-events where a user would be double-notified.
+Campaigns are delivered with Google's Firebase Cloud Messaging (FCM) to
+every registered app device — MURA's own push channel, no third-party
+app required. Signo is no longer part of the delivery path.
 """
 import logging
 
 from accounts.models import DeviceToken
 from django.utils import timezone
 from push import FcmError, fcm_configured, is_unregistered, send_fcm
-from rest_framework import serializers, status, viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.response import Response
 
 from .models import NotificationLog, PushCampaign
-from .signo import SignoError, send_event
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +27,7 @@ class PushCampaignSerializer(serializers.ModelSerializer):
 
 
 def deliver_campaign(campaign: PushCampaign) -> dict:
-    """Send one campaign to every audience. Returns a result summary.
-
-    FCM reaches every installed app (no third-party app needed); Signo
-    keeps reaching subscribers of the broadcast namespace. Signo failing no
-    longer blocks the FCM leg (and vice versa).
-    """
+    """Send one campaign to every registered app device via FCM."""
     payload = {"kind": "campaign", "campaign_id": campaign.id}
     delivered = 0
     if fcm_configured():
@@ -46,18 +40,18 @@ def deliver_campaign(campaign: PushCampaign) -> dict:
                     DeviceToken.objects.filter(token=token).update(is_active=False)
                 else:
                     logger.warning("campaign FCM push failed for %s…: %s", token[:12], exc)
-    signo_result = send_event(
-        campaign.title,
-        campaign.body,
-        payload=payload,
-        priority="high" if campaign.schedule == "now" else "default",
-    )
-    delivered += signo_result.get("delivered", 0)
-    return {"delivered": delivered, "fcm_delivered": delivered - signo_result.get("delivered", 0), "event_id": signo_result.get("eventId")}
+    else:
+        logger.warning("campaign send skipped: FCM is not configured (FCM_* missing from .env)")
+    return {"delivered": delivered, "event_id": None}
 
 
 class PushCampaignViewSet(viewsets.ModelViewSet):
-    """Staff-only studio endpoint: /api/v1/feeder/push/."""
+    """Studio endpoint: /api/v1/feeder/push/.
+
+    IsAdminUser = is_staff: every employee/reviewer account qualifies
+    (they are created is_staff=True), so composing and testing pushes is
+    part of the studio workflow. Content sync itself stays owner-only.
+    """
 
     queryset = PushCampaign.objects.all()
     serializer_class = PushCampaignSerializer
@@ -68,10 +62,7 @@ class PushCampaignViewSet(viewsets.ModelViewSet):
     def send(self, request, pk=None):
         """Send this campaign right now (whatever its schedule)."""
         campaign = self.get_object()
-        try:
-            result = deliver_campaign(campaign)
-        except SignoError as exc:
-            return Response({"detail": f"Signo push failed: {exc}"}, status=502)
+        result = deliver_campaign(campaign)
         campaign.last_sent_date = timezone.localdate()
         campaign.save(update_fields=("last_sent_date",))
         return Response({"delivered": result.get("delivered", 0), "event_id": result.get("event_id")})
@@ -81,10 +72,7 @@ class PushCampaignViewSet(viewsets.ModelViewSet):
         """Send now AND drop it into the caller's in-app feed so they can see
         it on their phone immediately (bell) while holding the device."""
         campaign = self.get_object()
-        try:
-            result = deliver_campaign(campaign)
-        except SignoError as exc:
-            return Response({"detail": f"Signo push failed: {exc}"}, status=502)
+        result = deliver_campaign(campaign)
         NotificationLog.objects.create(
             user=request.user,
             title=campaign.title,

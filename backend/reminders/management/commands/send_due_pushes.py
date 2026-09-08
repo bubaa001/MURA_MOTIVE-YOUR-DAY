@@ -1,10 +1,11 @@
 """Send campaigns that are due right now (daily morning / weekly day).
 
-Run by cron / Task Scheduler every few minutes, e.g. every 5 minutes:
+Run by a scheduled task every few minutes, e.g. every 5 minutes:
 
     python manage.py send_due_pushes
 
 Campaigns are deduped per day via last_sent_date, so re-runs are safe.
+Delivery is FCM-only (Google push) — see reminders/push_views.py.
 """
 import datetime as dt
 
@@ -13,11 +14,10 @@ from django.utils import timezone
 
 from reminders.models import PushCampaign
 from reminders.push_views import deliver_campaign
-from reminders.signo import SignoError
 
 
 class Command(BaseCommand):
-    help = "Send due PushCampaign broadcasts via Signo (daily/weekly schedules)."
+    help = "Send due PushCampaign broadcasts via FCM (daily/weekly schedules)."
 
     def handle(self, *args, **options):
         now = timezone.localtime()
@@ -41,11 +41,7 @@ class Command(BaseCommand):
             return
 
         for c in due:
-            try:
-                result = deliver_campaign(c)
-            except SignoError as exc:
-                self.stderr.write(f"FAILED {c.title}: {exc}")
-                continue
+            result = deliver_campaign(c)
             c.last_sent_date = today
             c.save(update_fields=("last_sent_date",))
             self.stdout.write(

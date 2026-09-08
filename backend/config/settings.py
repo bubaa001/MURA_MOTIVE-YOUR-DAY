@@ -230,7 +230,7 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 
-# --- Signo push ---
+# --- Google (FCM) push ---
 SIGNO_NAMESPACE = env("SIGNO_NAMESPACE", "")
 # Per-user topic namespace pattern: "{base}:{user_id}" keeps each account's
 # pushes private (fixes the shared-namespace cross-user leak). The base
@@ -241,7 +241,7 @@ SIGNO_USER_NAMESPACE_TEMPLATE = env("SIGNO_USER_NAMESPACE_TEMPLATE", "{namespace
 # Primary push channel: reaches every Android phone without requiring any
 # third-party app. Values come from a Firebase service-account key JSON
 # (Project Settings -> Service accounts -> Generate new private key).
-# Unset = FCM disabled; notify_user() falls back to Signo topics.
+# Unset = push disabled; notify_user() delivers nothing (feed still logged).
 FCM_PROJECT_ID = env("FCM_PROJECT_ID", "")
 FCM_CLIENT_EMAIL = env("FCM_CLIENT_EMAIL", "")
 # The PEM key with literal \n escapes as it appears in the downloaded JSON.
