@@ -743,9 +743,9 @@ class _EntryCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          entry.authorName.isEmpty
+                          personal ? 'You' : (entry.authorName.isEmpty
                               ? 'MURA community'
-                              : entry.authorName,
+                              : entry.authorName),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -774,6 +774,19 @@ class _EntryCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Personal entries are yours to remove — the delete
+                  // callback existed but no button invoked it, so entries
+                  // could never be deleted from the UI.
+                  if (personal)
+                    IconButton(
+                      onPressed: onDelete,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.all(6),
+                      constraints: const BoxConstraints(),
+                      icon: Icon(Icons.delete_outline_rounded,
+                          size: 19, color: pal.coral.withValues(alpha: .9)),
+                      tooltip: 'Delete entry',
+                    ),
                 ],
               ),
               if (expanded) ...[

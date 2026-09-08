@@ -37,7 +37,7 @@ weekly, download the newest one or sync to Google Drive via `rclone`.
 cd /home/bubaa/MURA/backend
 # ALWAYS snapshot the current DB before restoring anything:
 cp db.sqlite3 db.sqlite3.pre-restore.$(date +%s)
-.venv/bin/python manage.py loaddata backups/mura-<timestamp>.json
+python manage.py loaddata backups/mura-<timestamp>.json
 ```
 
 Loaddata is additive (it fails on conflicting PKs rather than overwriting),
@@ -69,7 +69,7 @@ rm -rf /home/bubaa/MURA/backend/media/releases/
 Rotate it now (then whenever anyone who knew it leaves):
 
 ```bash
-cd /home/bubaa/MURA/backend && .venv/bin/python manage.py changepassword buba
+cd /home/bubaa/MURA/backend && python manage.py changepassword buba
 ```
 
 Rules going forward:
@@ -89,8 +89,8 @@ ssh # or use the PA Bash console
 cd /home/bubaa/MURA
 git pull                       # NEVER run git reset --hard — the DB and media live here
 cd backend
-.venv/bin/python manage.py migrate    # additive by design; backup first if unsure
-.venv/bin/pip install -r requirements.txt
+python manage.py migrate    # additive by design; backup first if unsure
+python -m pip install -r requirements.txt
 ```
 
 Then on the PA **Web** tab: **Reload** the web app.
@@ -105,10 +105,10 @@ The free tier allows a few scheduled tasks. Create these:
 
 | Task | Command | Schedule |
 |---|---|---|
-| DB backup | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py db_backup` | Daily |
-| Reminders | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py push_due_reminders` | Hourly |
-| Campaigns | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py send_due_pushes` | Hourly |
-| Automations | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py run_automations` | Hourly |
+| DB backup | `cd /home/bubaa/MURA/backend && python manage.py db_backup` | Daily |
+| Reminders | `cd /home/bubaa/MURA/backend && python manage.py push_due_reminders` | Hourly |
+| Campaigns | `cd /home/bubaa/MURA/backend && python manage.py send_due_pushes` | Hourly |
+| Automations | `cd /home/bubaa/MURA/backend && python manage.py run_automations` | Hourly |
 
 Notes:
 - Reminder pushes match a **due window** (past HH:MM within the last 2h), so
