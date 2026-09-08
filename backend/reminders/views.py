@@ -22,6 +22,9 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     POST /notifications/read_all/ - mark everything read (called when the
     user opens the notification panel).
+
+    DELETE /notifications/clear/  - empty the feed (?read_only=1 keeps
+    unread items, the default clears everything).
     """
 
     serializer_class = NotificationLogSerializer
@@ -35,3 +38,12 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             read_at=timezone.now()
         )
         return Response({"marked": updated}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["delete", "post"])
+    def clear(self, request):
+        """Delete the caller's notifications. ?read_only=1 keeps unread."""
+        qs = NotificationLog.objects.filter(user=request.user)
+        if request.query_params.get("read_only") in ("1", "true", "yes"):
+            qs = qs.filter(read_at__isnull=False)
+        deleted, _ = qs.delete()
+        return Response({"cleared": deleted}, status=status.HTTP_200_OK)

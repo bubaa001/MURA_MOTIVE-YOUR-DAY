@@ -89,3 +89,24 @@ class ContentEngagement(models.Model):
                 fields=("item", "viewed_at"), name="content_con_item_id_0d58fa_idx"
             ),
         ]
+
+
+class SiteSetting(models.Model):
+    """Single-row-per-key studio setting (TheFeeder). Key/value with a sane
+    default in code, so the feeder can tune the app without a deploy."""
+
+    key = models.CharField(max_length=60, unique=True)
+    value = models.CharField(max_length=200)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "site setting"
+
+    def __str__(self) -> str:
+        return f"{self.key}={self.value}"
+
+
+def get_setting(key: str, default: str) -> str:
+    """Read a SiteSetting with a code default; never raises."""
+    row = SiteSetting.objects.filter(key=key).first()
+    return row.value if row is not None else default

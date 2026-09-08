@@ -1121,6 +1121,10 @@ class ApiClient {
   Future<void> markAllNotificationsRead() =>
       _jsonRequest('POST', '/notifications/read_all/');
 
+  /// DELETE /notifications/clear/ - empty the in-app feed for good.
+  Future<void> clearNotifications() =>
+      _jsonRequest('DELETE', '/notifications/clear/');
+
   // -----------------------------------------------------------------------
   // Automations (user-defined WHEN->THEN rules)
   // -----------------------------------------------------------------------

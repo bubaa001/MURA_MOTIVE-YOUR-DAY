@@ -204,3 +204,62 @@ class ContentManageApiTests(APITestCase):
         prov = res.json()["provenance"]
         self.assertEqual(prov["feeder_item_id"], candidate.id)
         self.assertEqual(prov["book"], "Source Book")
+
+
+class MotionBatchSettingsTests(APITestCase):
+    """Studio-controlled motion batch size + per-day stable shuffle."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="reader", password="test-pass-123")
+        cls.staff = User.objects.create_superuser(username="boss", password="test-pass-123", email="b@mura.local")
+        cls.quotes = [
+            ContentItem.objects.create(type="motion_quote", text=f"Q{i}.", status="published")
+            for i in range(12)
+        ]
+
+    def test_default_count_is_ten_and_stable_for_the_day(self):
+        self.client.force_authenticate(self.user)
+        a = self.client.get("/api/v1/content/motion/", {"date": "2026-09-09"}).json()
+        b = self.client.get("/api/v1/content/motion/", {"date": "2026-09-09"}).json()
+        self.assertEqual(a["count"], 10)
+        self.assertEqual(len(a["items"]), 10)
+        self.assertEqual([r["id"] for r in a["items"]], [r["id"] for r in b["items"]])
+
+    def test_batch_changes_between_days(self):
+        self.client.force_authenticate(self.user)
+        day1 = self.client.get("/api/v1/content/motion/", {"date": "2026-09-09"}).json()["items"]
+        day2 = self.client.get("/api/v1/content/motion/", {"date": "2026-09-10"}).json()["items"]
+        self.assertNotEqual(
+            {r["id"] for r in day1}, {r["id"] for r in day2},
+            "two days must not return the same selection",
+        )
+
+    def test_staff_can_change_count(self):
+        self.client.force_authenticate(self.staff)
+        res = self.client.put("/api/v1/feeder/settings/", {"motion_quote_count": 4}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["motion_quote_count"], 4)
+
+        self.client.force_authenticate(self.user)
+        feed = self.client.get("/api/v1/content/motion/", {"date": "2026-09-09"}).json()
+        self.assertEqual(feed["count"], 4)
+        self.assertEqual(len(feed["items"]), 4)
+
+    def test_count_capped_and_bad_values_rejected(self):
+        self.client.force_authenticate(self.staff)
+        self.client.put("/api/v1/feeder/settings/", {"motion_quote_count": 999}, format="json")
+        self.client.force_authenticate(self.user)
+        # capped to the hard max of 50, then to the pool size (12)
+        feed = self.client.get("/api/v1/content/motion/", {"date": "2026-09-09"}).json()
+        self.assertEqual(len(feed["items"]), 12)
+
+        self.client.force_authenticate(self.staff)
+        res = self.client.put("/api/v1/feeder/settings/", {"motion_quote_count": "abc"}, format="json")
+        self.assertEqual(res.status_code, 400)
+        res = self.client.put("/api/v1/feeder/settings/", {"nope": 1}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_settings_require_staff(self):
+        self.client.force_authenticate(self.user)
+        self.assertEqual(self.client.get("/api/v1/feeder/settings/").status_code, 403)

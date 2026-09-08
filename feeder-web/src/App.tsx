@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isLoggedIn, listItems, fetchNextPage, reviewItem, bulkReview, syncApproved, submitManually, updateCandidate, setContentStatus, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, testPushCampaign, deletePushCampaign } from "./api";
+import { isLoggedIn, listItems, fetchNextPage, reviewItem, bulkReview, syncApproved, submitManually, updateCandidate, setContentStatus, logout, me, listContent, createContent, updateContent, deleteContent, bulkContent, deleteCandidate, listPushCampaigns, createPushCampaign, sendPushCampaign, testPushCampaign, deletePushCampaign, getStudioSettings, saveStudioSettings } from "./api";
 import type { CandidatePatch, PushCampaign, PushPayload } from "./api";
 import Login from "./Login";
 import type { ContentPayload, ContentStatus, Item, ItemType, LiveItem, ManualSubmission, ReviewStatus } from "./types";
@@ -99,6 +99,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         {page === "queue" && <CandidatesPane tab="pending" onChanged={refreshPending} />}
         {page === "review" && <CandidatesPane tab="approved" onChanged={refreshPending} />}
         {page === "push" && <PushManager />}
+        {page === "settings" && <SettingsManager />}
       </main>
       {createType && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreateType(null); }}>
         <div className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
@@ -1170,3 +1171,62 @@ function PushManager() {
 }
 
 
+
+// ---------------------------------------------------------------------------
+// Settings — tune how the app behaves from the studio (no deploy needed).
+// ---------------------------------------------------------------------------
+function SettingsManager() {
+  const [motionCount, setMotionCount] = useState(10);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    getStudioSettings()
+      .then((s) => { setMotionCount(s.motion_quote_count); setLoaded(true); })
+      .catch(() => setErr("Could not load settings."));
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(""); setErr("");
+    try {
+      const s = await saveStudioSettings({ motion_quote_count: motionCount });
+      setMotionCount(s.motion_quote_count);
+      setMsg("Saved — the next day's Motion Quotes batch will show " + s.motion_quote_count + " quotes.");
+    } catch {
+      setErr("Could not save — check the value and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="content-manager">
+      <div className="studio-intro">
+        <div>
+          <p className="eyebrow">Studio settings</p>
+          <h2>Tune the app without a deploy.</h2>
+          <p className="muted">Changes apply immediately. Daily batches pick them up on their next rotation.</p>
+        </div>
+        <div className="studio-stats">
+          <button className="primary" disabled={busy || !loaded} onClick={save}>{busy ? "Saving…" : "Save settings"}</button>
+        </div>
+      </div>
+
+      {msg && <div className="success banner">{msg}</div>}
+      {err && <div className="error banner">{err}</div>}
+
+      <form className="manual-feed card" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <label>Motion Quotes per day (1–50)</label>
+        <input
+          type="number" min={1} max={50}
+          value={motionCount}
+          disabled={!loaded}
+          onChange={(e) => setMotionCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+        />
+        <p className="muted small">How many motion quotes appear in the app's Today feed. The batch is shuffled every day — a fresh-feeling selection each morning that stays stable for the whole day.</p>
+      </form>
+    </section>
+  );
+}

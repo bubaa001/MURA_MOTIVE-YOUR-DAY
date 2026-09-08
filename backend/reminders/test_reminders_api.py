@@ -78,3 +78,39 @@ class ReminderValidationTests(APITestCase):
     def test_time_required(self):
         res = self._post(_payload(time=None))
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class NotificationClearTests(APITestCase):
+    """DELETE /notifications/clear/ — the in-app feed must be clearable."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="nudger", password="test-pass-123")
+        self.other = User.objects.create_user(username="other", password="test-pass-123")
+        self.client.force_authenticate(self.user)
+
+    def _seed(self):
+        from django.utils import timezone
+        from reminders.models import NotificationLog
+        NotificationLog.objects.create(
+            user=self.user, title="Old", body="done", kind="goal_achieved", read_at=timezone.now()
+        )
+        unread = NotificationLog.objects.create(user=self.user, title="Fresh", body="new", kind="reminder")
+        NotificationLog.objects.create(user=self.other, title="Not mine", kind="reminder")
+        return unread
+
+    def test_clear_deletes_only_own_rows(self):
+        self._seed()
+        res = self.client.delete("/api/v1/notifications/clear/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["cleared"], 2)
+        from reminders.models import NotificationLog
+        self.assertFalse(NotificationLog.objects.filter(user=self.user).exists())
+        self.assertTrue(NotificationLog.objects.filter(user=self.other).exists())  # untouched
+
+    def test_read_only_keeps_unread(self):
+        unread = self._seed()
+        res = self.client.delete("/api/v1/notifications/clear/?read_only=1")
+        self.assertEqual(res.status_code, 200)
+        from reminders.models import NotificationLog
+        titles = set(NotificationLog.objects.filter(user=self.user).values_list("title", flat=True))
+        self.assertEqual(titles, {"Fresh"})  # read row gone, unread kept

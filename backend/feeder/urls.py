@@ -1,6 +1,7 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from content.views import ContentManageViewSet
+from content.views import ContentManageViewSet, site_settings
 from reminders.push_views import PushCampaignViewSet
 
 from . import views
@@ -12,4 +13,8 @@ router.register("content", ContentManageViewSet, basename="feeder-content")
 # Studio Push: compose + send broadcast notifications via FCM (Google push).
 router.register("push", PushCampaignViewSet, basename="feeder-push")
 
-urlpatterns = router.urls
+urlpatterns = [
+    # Studio Settings: tune the app (e.g. daily motion-quote count).
+    path("settings/", site_settings, name="feeder-settings"),
+    *router.urls,
+]

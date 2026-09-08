@@ -370,3 +370,23 @@ export function deletePushCampaign(id: number): Promise<void> {
 export function testPushCampaign(id: number): Promise<{ delivered: number; event_id?: string; in_app: boolean }> {
   return request("/feeder/push/" + id + "/test/", { method: "POST" });
 }
+
+// ---------------------------------------------------------------------------
+// Studio settings — tune the app from the feeder (staff only)
+// ---------------------------------------------------------------------------
+
+export interface StudioSettings {
+  motion_quote_count: number;
+}
+
+export function getStudioSettings(): Promise<StudioSettings> {
+  return request<StudioSettings>("/feeder/settings/");
+}
+
+export function saveStudioSettings(payload: Partial<StudioSettings>): Promise<StudioSettings> {
+  return request<StudioSettings>("/feeder/settings/", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}

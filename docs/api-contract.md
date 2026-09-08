@@ -33,6 +33,7 @@ One generic model; filter by type.
 | GET | /content/items/ | `type=quote\|prayer\|philosophy`, `tag=`, `search=`, `source=` | paginated list |
 | GET | /content/items/{id}/ | | single item |
 | GET    | /content/daily/ | `date=YYYY-MM-DD` (defaults today) | deterministic rotation → `{"date": "...", "quote": {...}|null, "prayer": {...}|null, "philosophy": {...}|null}` — nulls when a type has no items |
+| GET | /content/motion/ | `date=YYYY-MM-DD` | the day's Motion Quotes batch → `{"date", "count", "items"}`; size set in the feeder (`/feeder/settings/` `motion_quote_count`, default 10), reshuffled every day but stable for the whole day |
 
 ContentItem shape:
 ```json
@@ -140,6 +141,15 @@ CRUD at `/memories/`.
 
 CRUD at `/reminders/`. Client schedules local notifications from this list (Phase 2 moves scheduling server-side).
 
+## Notification feed (in-app)
+
+`{id, title, body, kind ("reminder"|"habit"|"goal_achieved"|"streak"|"campaign"|"automation"|"general"), created_at, read_at}` at `/notifications/` (user-scoped, newest first).
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | /notifications/read_all/ | mark everything read (clears the unread badge) |
+| DELETE (or POST) | /notifications/clear/ | empty the feed; `?read_only=1` keeps unread items |
+
 ## Push devices (FCM token registration)
 
 `{id, token, platform ("android"|"ios"|"web"), is_active, created_at}`
@@ -180,7 +190,8 @@ Config validation: unknown `habit_id` (404-style) and malformed `time`/`streak` 
 | POST | /feeder/items/{id}/sync_item/ | **superuser only** — publish exactly one approved candidate |
 | POST | /feeder/items/{id}/unsync/ | **superuser only** — reset `synced` so a deleted live copy can be re-synced |
 | GET/POST/PATCH/DELETE | /feeder/content/ | live content hub CRUD (publish status changes: superuser only) |
-| GET/POST/PATCH/DELETE | /feeder/push/ | Signo broadcast campaigns; `send`/`test` actions |
+| GET/POST/PATCH/DELETE | /feeder/push/ | FCM broadcast campaigns; `send`/`test` actions |
+| GET/PUT | /feeder/settings/ | studio-tunable app settings; currently `motion_quote_count` (1–50, default 10) — how many motion quotes the app's Today feed shows per day |
 
 ## Health section
 
@@ -192,7 +203,7 @@ Reuses the habits engine: the client filters `GET /habits/` by `category=physica
 
 ## Push architecture
 
-Personal events (streak milestones, goal wins, user reminders) go to per-user Signo topics (`{SIGNO_NAMESPACE}:{user_id}`) and never to the global namespace — the global namespace is owner broadcasts only. See `docs/runbook.md` §5.
+All pushes go through Google FCM (see `docs/runbook.md` §5): the app registers its device token at `/me/devices/` after sign-in; automations, reminders, campaigns and release announcements send through the FCM HTTP v1 API. The in-app `/notifications/` feed is the guaranteed channel and records every event.
 
 ## Phase 2 hooks
 

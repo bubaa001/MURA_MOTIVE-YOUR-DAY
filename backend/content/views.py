@@ -1,4 +1,5 @@
 import datetime as dt
+import random
 
 from django.db import connection, transaction
 from django.db.models import Count, Exists, F, OuterRef, Q, Value
@@ -9,7 +10,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import ContentEngagement, ContentItem
+from .models import ContentEngagement, ContentItem, SiteSetting, get_setting
 from .permissions import ServiceKeyPermission
 from .serializers import ContentItemSerializer, ContentManageSerializer
 
@@ -251,7 +252,14 @@ def daily_feed(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def motion_feed(request):
-    """Return the deterministic batch of up to ten motion quotes for a day."""
+    """Return the day's motion-quote batch.
+
+    The batch size is a studio setting (feeder: `motion_quote_count`,
+    default 10, max 50). Quotes are shuffled by a seed derived from the
+    date, so every day gets a different-feeling selection that stays
+    stable for the whole day — no more "same 3 quotes" resets, and no
+    repeats until the pool cycles.
+    """
     raw_date = request.query_params.get("date")
     try:
         day = dt.date.fromisoformat(raw_date) if raw_date else timezone.localdate()
@@ -260,13 +268,22 @@ def motion_feed(request):
 
     quotes = list(ContentItem.objects.filter(type="motion_quote", status="published").order_by("id"))
     if not quotes:
-        return Response({"date": day.isoformat(), "items": []})
-    batch_count = (len(quotes) + 9) // 10
-    batch_index = day.toordinal() % batch_count
-    batch = quotes[batch_index * 10 : (batch_index + 1) * 10]
+        return Response({"date": day.isoformat(), "items": [], "count": 0})
+
+    try:
+        count = int(get_setting("motion_quote_count", "10"))
+    except ValueError:
+        count = 10
+    count = max(1, min(count, 50, len(quotes)))
+
+    # Deterministic per-day shuffle: same batch all day, new mix tomorrow.
+    rng = random.Random(day.toordinal())
+    batch = rng.sample(quotes, count)
+    batch.sort(key=lambda q: q.id)
     return Response(
         {
             "date": day.isoformat(),
+            "count": count,
             "items": ContentItemSerializer(
                 batch, many=True, context={"request": request}
             ).data,
@@ -380,3 +397,53 @@ class ContentManageViewSet(viewsets.ModelViewSet):
         item.save(update_fields=["image", "image_url", "updated_at"])
         return Response(ContentManageSerializer(item, context={"request": request}).data)
 
+
+
+# Studio-tunable app settings (TheFeeder). The only keys the studio may
+# write — new tunables opt in here: {key: (default, hard_max)}.
+SETTING_KEYS = {
+    "motion_quote_count": ("10", "50"),
+}
+
+
+def _settings_payload() -> dict:
+    payload = {}
+    for key, (default, _max) in SETTING_KEYS.items():
+        try:
+            payload[key] = int(get_setting(key, default))
+        except ValueError:
+            payload[key] = int(default)
+    return payload
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsAdminUser])
+def site_settings(request):
+    """GET/PUT /api/v1/feeder/settings/ — studio-tunable app settings.
+
+    GET  {"motion_quote_count": 10}   (defaults shown when unset)
+    PUT  {"motion_quote_count": 15}   (upserts only whitelisted keys)
+    """
+    if request.method == "GET":
+        return Response(_settings_payload())
+
+    updates = {}
+    for key, raw in (request.data or {}).items():
+        if key not in SETTING_KEYS:
+            return Response(
+                {"detail": f"Unknown setting: {key}"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {key: ["Must be a whole number."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        default, hard_max = SETTING_KEYS[key]
+        value = max(1, min(value, int(hard_max)))
+        updates[key] = str(value)
+    if not updates:
+        return Response({"detail": "No settings given."}, status=status.HTTP_400_BAD_REQUEST)
+    for key, value in updates.items():
+        SiteSetting.objects.update_or_create(key=key, defaults={"value": value})
+    return Response(_settings_payload())

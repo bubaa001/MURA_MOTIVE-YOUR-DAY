@@ -605,21 +605,45 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasItems = (_items?.isNotEmpty ?? false) && _err == null;
     return SafeArea(
       child: SizedBox(
         height: 430,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 18, 20, 6),
-              child: Text(
-                'Notifications',
-                style: TextStyle(
-                  color: Color(0xFFE5E2E1),
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 6),
+              child: Row(
+                children: <Widget>[
+                  const Expanded(
+                    child: Text(
+                      'Notifications',
+                      style: TextStyle(
+                        color: Color(0xFFE5E2E1),
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (hasItems)
+                    TextButton.icon(
+                      onPressed: _clearAll,
+                      icon: const Icon(Icons.clear_all_rounded,
+                          size: 18, color: Color(0xFFFFC174)),
+                      label: const Text(
+                        'Clear all',
+                        style: TextStyle(
+                            color: Color(0xFFFFC174),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 34),
+                      ),
+                    ),
+                ],
               ),
             ),
             const Divider(color: Color(0xFF2A2015), height: 1),
@@ -628,6 +652,22 @@ class _NotificationsSheetState extends State<_NotificationsSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _clearAll() async {
+    try {
+      await api.clearNotifications();
+      if (!mounted) return;
+      setState(() => _items = const <AppNotification>[]);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(friendlyError(e)),
+          backgroundColor: const Color(0xFF2A2015),
+        ));
+    }
   }
 
   Widget _buildBody() {
