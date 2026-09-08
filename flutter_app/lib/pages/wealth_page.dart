@@ -110,6 +110,7 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
                     : '${_summary!.currency} ${_summary!.netWorth!.toStringAsFixed(2)}',
                 subtitle: 'Optional manual snapshot; no card access required.',
                 accent: scheme.tertiary,
+                onTap: () => _showFinanceEditor(context),
               ),
               const SizedBox(height: 16),
               _metricCard(
@@ -123,6 +124,7 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
                     ? 'No bank or card connection is required.'
                     : 'Recurring income currently tracked.',
                 accent: scheme.primary,
+                onTap: () => _showFinanceEditor(context),
               ),
               const SizedBox(height: 16),
               _ledgerCard(context),
@@ -163,9 +165,10 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
     required String title,
     required String subtitle,
     required Color accent,
+    VoidCallback? onTap,
   }) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLowest,
@@ -196,13 +199,31 @@ class _WealthPageState extends State<WealthPage> with AppRefreshListener {
                 fontWeight: FontWeight.w700,
               )),
           const SizedBox(height: 4),
-          Text(subtitle,
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 14,
-              )),
+          Row(
+            children: [
+              Expanded(
+                child: Text(subtitle,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 14,
+                    )),
+              ),
+              if (onTap != null) ...[
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right_rounded,
+                    size: 20, color: scheme.onSurfaceVariant),
+              ],
+            ],
+          ),
         ],
       ),
+    );
+    if (onTap == null) return card;
+    // The card advertises "Add … manually" — now tapping it opens the form.
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: card,
     );
   }
 

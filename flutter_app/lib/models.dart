@@ -1026,6 +1026,83 @@ class Reminder {
 typedef MemoryItem = Memory;
 typedef UserProfile = User;
 
+/// One user-defined automation rule, from /automations/.
+class AutomationRule {
+  const AutomationRule({
+    required this.id,
+    required this.name,
+    required this.triggerType,
+    this.triggerConfig = const <String, dynamic>{},
+    this.actionType = 'push',
+    this.actionConfig = const <String, dynamic>{},
+    this.isActive = true,
+    this.lastFiredDate,
+    this.createdAt = '',
+  });
+
+  factory AutomationRule.fromJson(Map<String, dynamic> json) => AutomationRule(
+        id: _toInt(json['id']),
+        name: _toString(json['name']),
+        triggerType: _toString(json['trigger_type'], fallback: 'habit_done'),
+        triggerConfig: _toDynamicMap(json['trigger_config']),
+        actionType: _toString(json['action_type'], fallback: 'push'),
+        actionConfig: _toDynamicMap(json['action_config']),
+        isActive: _toBool(json['is_active'], fallback: true),
+        lastFiredDate: _toStringOrNull(json['last_fired_date']),
+        createdAt: _toString(json['created_at']),
+      );
+
+  final int id;
+  final String name;
+  final String triggerType;
+  final Map<String, dynamic> triggerConfig;
+  final String actionType;
+  final Map<String, dynamic> actionConfig;
+  final bool isActive;
+  final String? lastFiredDate;
+  final String createdAt;
+
+  /// Trigger types mirror the backend's TRIGGERS list.
+  static const List<String> triggerTypes = <String>[
+    'habit_done', 'all_habits_done', 'streak_reached', 'goal_achieved', 'daily_nudge',
+  ];
+
+  String get triggerLabel {
+    switch (triggerType) {
+      case 'habit_done':
+        return 'When a habit is done';
+      case 'all_habits_done':
+        return 'When all habits are done';
+      case 'streak_reached':
+        return 'When a streak hits ${triggerConfig['streak'] ?? 0} days';
+      case 'goal_achieved':
+        return 'When a goal is achieved';
+      case 'daily_nudge':
+        return 'Every day at ${triggerConfig['time'] ?? '—'}'
+            '${(triggerConfig['only_if_incomplete'] as bool? ?? false) ? ' (if habits open)' : ''}';
+      default:
+        return triggerType;
+    }
+  }
+
+  String get messageTitle =>
+      _toString(actionConfig['title'], fallback: name);
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'name': name,
+        'trigger_type': triggerType,
+        'trigger_config': triggerConfig,
+        'action_type': actionType,
+        'action_config': actionConfig,
+        'is_active': isActive,
+        'created_at': createdAt,
+      };
+
+  static Map<String, dynamic> _toDynamicMap(Object? raw) =>
+      raw is Map<String, dynamic> ? raw : const <String, dynamic>{};
+}
+
 /// One pushed Signo event, from GET /notifications/.
 class AppNotification {
   const AppNotification({

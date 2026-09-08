@@ -24,6 +24,8 @@ api_v1 = [
     path("priorities/", include("priorities.urls")),
     # Reminders
     path("reminders/", include("reminders.urls")),
+    # User-defined rules: WHEN trigger THEN notify (/automations/)
+    path("automations/", include("automations.urls")),
     # Pushed-event feed (Signo): /notifications/, /notifications/read_all/
     path("notifications/", include("reminders.notification_urls")),
     # TheFeeder: book upload/extraction/review/sync (staff-only, React dashboard)

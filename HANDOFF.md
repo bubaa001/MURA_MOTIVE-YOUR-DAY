@@ -23,7 +23,7 @@ Personal discipline app for Buba. Backend: Django REST API. Mobile: Flutter (mig
 
 ### Flutter App
 - **Code location:** `C:\mura\flutter_app`
-- **Current version:** `1.3.0+9` — the single source of truth is `flutter_app/pubspec.yaml:5`. Bump it there, build, then `manage.py publish_release` (runbook §6). Do not trust commit messages for versions.
+- **Current version:** `1.4.0+10` — the single source of truth is `flutter_app/pubspec.yaml:5`. Bump it there, build, then `manage.py publish_release` (runbook §6). Do not trust commit messages for versions.
 - **APK:** Available on [GitHub Releases](https://github.com/bubaa001/MURA_MOTIVE-YOUR-DAY/releases)
 - **API URL:** `https://bubaa.pythonanywhere.com/api/v1`
 - **Media URL:** `https://bubaa.pythonanywhere.com` (separate from API for image serving)
@@ -53,7 +53,7 @@ Personal discipline app for Buba. Backend: Django REST API. Mobile: Flutter (mig
 - ✅ **Library page:** Tap to expand/collapse (quotes, insights, philosophy)
 - ✅ **Memory cards:** Images load from PythonAnywhere
 - ✅ **Profile avatar:** Linked to user `buba` (`avatars/2026/09/scaled_1000702868.jpg`)
-- ✅ **APK distribution:** GitHub Releases (v1.3.0)
+- ✅ **APK distribution:** GitHub Releases (v1.4.0)
 - ✅ **Light mode + friendly errors** implemented app-wide
 - ✅ Content lifecycle: `published/draft/archived`
 
@@ -118,7 +118,7 @@ C:\mura\
 │   │   │   ├── journal_page.dart   # Expand/collapse
 │   │   │   └── library_page.dart   # Expand/collapse
 │   │   └── models.dart    # Data models
-│   └── pubspec.yaml       # Version: 1.3.0+3
+│   └── pubspec.yaml       # Version: 1.4.0+10
 ├── feeder-web/            # Content management studio
 │   └── src/
 │       └── api.ts         # Points to production API
@@ -162,7 +162,7 @@ C:\mura\
 1. ✅ **Fix images** — DONE (all images load from PythonAnywhere)
 2. ✅ **Journal expand/collapse** — DONE
 3. ✅ **Library expand/collapse** — DONE
-4. ✅ **APK distribution via GitHub Releases** — DONE (v1.3.0)
+4. ✅ **APK distribution via GitHub Releases** — DONE (v1.4.0)
 5. ✅ **Security hardening pass** — DONE (2026-09-07 audit): employee signup gated by
    `EMPLOYEE_SIGNUP_KEY`, feeder sync is superuser-only, per-user push topics,
    throttling, atomic writes, timezone-consistent check-ins, pagination fixes,
@@ -193,7 +193,7 @@ C:\mura\
 - [x] Journal entries load and expand/collapse
 - [x] Library items load and expand/collapse
 - [x] Images load (avatar, journal photos, memory photos, quote images)
-- [x] APK installs on phone (v1.3.0)
+- [x] APK installs on phone (v1.4.0)
 - [x] Push notifications (work in progress) — scheduled-task based, see runbook §4/§5
 
 ---
@@ -202,7 +202,7 @@ C:\mura\
 
 **Latest release:** [GitHub Releases](https://github.com/bubaa001/MURA_MOTIVE-YOUR-DAY/releases)
 
-- Download `MURA-v1.3.0.apk`
+- Download `MURA-v1.4.0.apk`
 - Install on any Android device (allow unknown sources)
 
 ---
@@ -227,7 +227,7 @@ C:\mura\
 ---
 
 **Last updated:** September 7, 2026
-**Handoff version:** v1.3.0
+**Handoff version:** v1.4.0
 ```
 
 ---

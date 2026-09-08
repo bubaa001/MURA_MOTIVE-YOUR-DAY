@@ -5,9 +5,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../habit_palette.dart';
 import '../home_widgets.dart';
 import '../models.dart';
 import '../refresh_bus.dart';
+import '../widgets/mura_widgets.dart';
 import '../theme.dart'; // ignore: unused_import
 
 /// MURA - Today screen: greeting, tap-to-reveal daily quote, habit
@@ -253,53 +255,7 @@ class _TodayPageState extends State<TodayPage> with AppRefreshListener {
     }
   }
 
-  IconData _iconFor(String? name) {
-    switch (name) {
-      case 'menu_book':
-      case 'book':
-        return Icons.menu_book_outlined;
-      case 'fitness_center':
-        return Icons.fitness_center;
-      case 'directions_run':
-      case 'run':
-        return Icons.directions_run;
-      case 'savings':
-        return Icons.savings_outlined;
-      case 'paid':
-      case 'account_balance':
-        return Icons.account_balance_outlined;
-      case 'self_improvement':
-        return Icons.self_improvement;
-      case 'spa':
-        return Icons.spa_outlined;
-      case 'psychology':
-        return Icons.psychology_outlined;
-      case 'bedtime':
-        return Icons.bedtime_outlined;
-      case 'water_drop':
-        return Icons.water_drop_outlined;
-      case 'restaurant':
-        return Icons.restaurant_outlined;
-      case 'edit':
-      case 'journal':
-        return Icons.edit_note_outlined;
-      case 'code':
-        return Icons.code_outlined;
-      case 'language':
-        return Icons.language_outlined;
-      case 'music_note':
-        return Icons.music_note_outlined;
-      case 'timer':
-      case 'schedule':
-        return Icons.timer_outlined;
-      case 'bolt':
-        return Icons.bolt_outlined;
-      case 'star':
-        return Icons.star_outline;
-      default:
-        return Icons.bolt_outlined;
-    }
-  }
+  IconData _iconFor(String? name) => habitIcon(name);
 
   // ----------------------------------------------------------------- UI
 
@@ -756,14 +712,11 @@ class _TodayPageState extends State<TodayPage> with AppRefreshListener {
           ],
         ),
         const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            value: total > 0 ? done / total : 0,
-            minHeight: 4,
-            backgroundColor: light ? scheme.surfaceContainerHighest : _pal.cardAlt,
-            valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
-          ),
+        AnimatedProgressBar(
+          value: total > 0 ? done / total : 0,
+          height: 4,
+          color: scheme.primary,
+          trackColor: light ? scheme.surfaceContainerHighest : _pal.cardAlt,
         ),
         const SizedBox(height: 16),
         if (total == 0)

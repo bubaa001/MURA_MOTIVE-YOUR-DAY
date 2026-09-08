@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     "priorities.apps.PrioritiesConfig",
     "reminders.apps.RemindersConfig",
     "feeder",
+    "automations",
     "updates.apps.UpdatesConfig",
 ]
 
@@ -226,6 +227,16 @@ SIGNO_NAMESPACE = env("SIGNO_NAMESPACE", "")
 # pushes private (fixes the shared-namespace cross-user leak). The base
 # namespace stays usable for owner broadcasts from the studio.
 SIGNO_USER_NAMESPACE_TEMPLATE = env("SIGNO_USER_NAMESPACE_TEMPLATE", "{namespace}:{user_id}")
+
+# --- FCM push (Firebase Cloud Messaging, HTTP v1) ---
+# Primary push channel: reaches every Android phone without requiring any
+# third-party app. Values come from a Firebase service-account key JSON
+# (Project Settings -> Service accounts -> Generate new private key).
+# Unset = FCM disabled; notify_user() falls back to Signo topics.
+FCM_PROJECT_ID = env("FCM_PROJECT_ID", "")
+FCM_CLIENT_EMAIL = env("FCM_CLIENT_EMAIL", "")
+# The PEM key with literal \n escapes as it appears in the downloaded JSON.
+FCM_PRIVATE_KEY = env("FCM_PRIVATE_KEY", "")
 
 # --- i18n / tz ---
 LANGUAGE_CODE = "en-us"

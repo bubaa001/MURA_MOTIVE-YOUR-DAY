@@ -352,6 +352,18 @@ class _JournalPageState extends State<JournalPage> with AppRefreshListener {
           ],
         ),
       ),
+      // The editor sheet existed but nothing opened it — a journal app
+      // you cannot write in is the definition of "not interactive".
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'journal-fab',
+        onPressed: _openEditor,
+        backgroundColor: _pal.amberDeep,
+        foregroundColor: _pal.onAmber,
+        elevation: 3,
+        icon: const Icon(Icons.edit_outlined, size: 21),
+        label: const Text('Write',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
+      ),
     );
   }
 
@@ -791,58 +803,6 @@ class _EntryCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _JournalDetailPage extends StatelessWidget {
-  final JournalEntry entry;
-
-  const _JournalDetailPage({required this.entry});
-
-  @override
-  Widget build(BuildContext context) { final MuraPalette pal = MuraPalette.of(context);
-    final meta = _moodMeta(entry.mood, pal);
-    return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        title: const Text('Journal entry'),
-        backgroundColor: pal.bg,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-        children: [
-          Text(
-            entry.title,
-            style: TextStyle(
-              color: pal.text,
-              fontSize: 26,
-              height: 1.15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(meta.emoji, style: const TextStyle(fontSize: 19)),
-              const SizedBox(width: 8),
-              Text(
-                _fmtDateTime(entry.createdAt),
-                style: TextStyle(color: pal.textDim, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 26),
-          Text(
-            entry.body,
-            style: const TextStyle(
-              color: Color(0xFFEDE7DF),
-              fontSize: 16,
-              height: 1.65,
-            ),
-          ),
-        ],
       ),
     );
   }

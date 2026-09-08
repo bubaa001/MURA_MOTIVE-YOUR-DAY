@@ -49,7 +49,7 @@ object MuraWidgets {
     }
 }
 
-/** Today's quote - wide banner card. */
+/** Today's quote - wide banner card; quote and source cross-fade in a flipper. */
 class QuoteWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         renderAll(context)
@@ -60,32 +60,47 @@ class QuoteWidgetProvider : AppWidgetProvider() {
             val source = MuraWidgets.text(context, "quote_source", "Napoleon Hill")
             MuraWidgets.update(context, QuoteWidgetProvider::class.java, R.layout.quote_widget) { v ->
                 v.setTextViewText(R.id.quote_text, quote)
-                v.setTextViewText(R.id.quote_source, source)
+                // Frame 1 of the flipper: "— Napoleon Hill" gets its own quiet moment.
+                v.setTextViewText(R.id.quote_source, "— $source")
                 MuraWidgets.clickThrough(context, v, R.id.quote_root)
             }
         }
     }
 }
 
-/** Current streak - compact square. */
+/** Current streak - compact square with a bar toward the next milestone. */
 class StreakWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         renderAll(context)
     }
     companion object {
+        private val MILESTONES = intArrayOf(3, 7, 14, 30, 60, 100, 365)
+
         fun renderAll(context: Context) {
-            val days = MuraWidgets.text(context, "streak", "0")
+            val days = MuraWidgets.text(context, "streak", "0").toIntOrNull() ?: 0
             val label = MuraWidgets.text(context, "streak_label", "DAY STREAK")
+            // Next milestone strictly above the current streak.
+            val next = MILESTONES.firstOrNull { it > days }
+            val (progress, hint) = when (next) {
+                null -> 100 to "All milestones conquered"
+                else -> {
+                    val prev = MILESTONES.lastOrNull { it <= days } ?: 0
+                    val pct = ((days - prev) * 100) / (next - prev)
+                    pct to "$days / $next days"
+                }
+            }
             MuraWidgets.update(context, StreakWidgetProvider::class.java, R.layout.streak_widget) { v ->
-                v.setTextViewText(R.id.streak_days, days)
+                v.setTextViewText(R.id.streak_days, days.toString())
                 v.setTextViewText(R.id.streak_label, label)
+                v.setProgressBar(R.id.streak_progress, 100, progress, false)
+                v.setTextViewText(R.id.streak_next, hint)
                 MuraWidgets.clickThrough(context, v, R.id.streak_root)
             }
         }
     }
 }
 
-/** Daily spiritual insight - calm card. */
+/** Daily spiritual insight - calm card; text and source cross-fade. */
 class InsightWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         renderAll(context)
@@ -96,14 +111,14 @@ class InsightWidgetProvider : AppWidgetProvider() {
             val source = MuraWidgets.text(context, "insight_source", "")
             MuraWidgets.update(context, InsightWidgetProvider::class.java, R.layout.insight_widget) { v ->
                 v.setTextViewText(R.id.insight_text, insight)
-                v.setTextViewText(R.id.insight_source, source)
+                if (source.isNotBlank()) v.setTextViewText(R.id.insight_source, "— $source")
                 MuraWidgets.clickThrough(context, v, R.id.insight_root)
             }
         }
     }
 }
 
-/** Today's checklist - tall list. */
+/** Today's checklist - tall list with a day-progress bar. */
 class HabitsWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         renderAll(context)
@@ -116,6 +131,12 @@ class HabitsWidgetProvider : AppWidgetProvider() {
             MuraWidgets.update(context, HabitsWidgetProvider::class.java, R.layout.habits_widget) { v ->
                 val summary = if (names.isEmpty()) "" else doneCount.toString() + "/" + names.size.toString() + " done"
                 v.setTextViewText(R.id.habits_done, summary)
+                // Day progress: fills as the checklist clears.
+                v.setProgressBar(
+                    R.id.habits_progress, 100,
+                    if (names.isEmpty()) 0 else (doneCount * 100) / names.size,
+                    false,
+                )
                 if (names.isEmpty()) {
                     v.setViewVisibility(R.id.habits_rows, android.view.View.GONE)
                     v.setViewVisibility(R.id.habits_empty, android.view.View.VISIBLE)

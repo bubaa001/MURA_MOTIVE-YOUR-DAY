@@ -546,6 +546,19 @@ class ApiClient {
     return Habit.fromJson(data);
   }
 
+  /// PATCH /habits/{id}/ - partial update (name, icon, color, category,
+  /// schedule_days, grace_days_per_week, is_active).
+  Future<Habit> updateHabit(int id, Map<String, dynamic> fields) async {
+    final String path = '/habits/$id/';
+    final data =
+        _asMap(await _jsonRequest('PATCH', path, body: fields), path);
+    return Habit.fromJson(data);
+  }
+
+  /// DELETE /habits/{id}/ - removes the habit and its logs permanently.
+  Future<void> deleteHabit(int id) =>
+      _jsonRequest('DELETE', '/habits/$id/');
+
   /// GET /habits/today/ unwrapped to its {date, items} envelope.
   Future<TodayChecklist> todayChecklist() async => TodayChecklist.fromJson(
       _asMap(await _jsonRequest('GET', '/habits/today/'), '/habits/today/'));
@@ -1089,6 +1102,73 @@ class ApiClient {
   /// POST /notifications/read_all/ - clear the unread badge.
   Future<void> markAllNotificationsRead() =>
       _jsonRequest('POST', '/notifications/read_all/');
+
+  // -----------------------------------------------------------------------
+  // Automations (user-defined WHEN->THEN rules)
+  // -----------------------------------------------------------------------
+
+  /// GET /automations/ - newest first, all pages.
+  Future<List<AutomationRule>> automations() async {
+    final rows = await _fetchAllPages('/automations/');
+    return rows.map(AutomationRule.fromJson).toList(growable: false);
+  }
+
+  /// POST /automations/
+  Future<AutomationRule> createAutomation({
+    required String name,
+    required String triggerType,
+    Map<String, dynamic> triggerConfig = const <String, dynamic>{},
+    Map<String, dynamic> actionConfig = const <String, dynamic>{},
+  }) async {
+    final data = _asMap(
+      await _jsonRequest('POST', '/automations/', body: <String, dynamic>{
+        'name': name,
+        'trigger_type': triggerType,
+        'trigger_config': triggerConfig,
+        'action_type': 'push',
+        'action_config': actionConfig,
+      }),
+      '/automations/',
+    );
+    return AutomationRule.fromJson(data);
+  }
+
+  /// PATCH /automations/{id}/
+  Future<AutomationRule> updateAutomation(
+      int id, Map<String, dynamic> fields) async {
+    final String path = '/automations/$id/';
+    return AutomationRule.fromJson(
+        _asMap(await _jsonRequest('PATCH', path, body: fields), path));
+  }
+
+  /// POST /automations/{id}/toggle/ - pause or resume.
+  Future<AutomationRule> toggleAutomation(int id) async {
+    final data = _asMap(
+        await _jsonRequest('POST', '/automations/$id/toggle/'),
+        '/automations/$id/toggle/');
+    return AutomationRule.fromJson(data);
+  }
+
+  /// DELETE /automations/{id}/
+  Future<void> deleteAutomation(int id) =>
+      _jsonRequest('DELETE', '/automations/$id/');
+
+  // -----------------------------------------------------------------------
+  // Push devices (FCM token registration)
+  // -----------------------------------------------------------------------
+
+  /// POST /me/devices/ - register this device's Firebase push token.
+  /// Idempotent: re-registering a known token just refreshes it.
+  Future<void> registerDevice(String token, {String platform = 'android'}) async {
+    await _jsonRequest('POST', '/me/devices/', body: <String, dynamic>{
+      'token': token,
+      'platform': platform,
+    });
+  }
+
+  /// DELETE /me/devices/{id}/ - stop pushing to one registered device.
+  Future<void> unregisterDevice(int id) =>
+      _jsonRequest('DELETE', '/me/devices/$id/');
 }
 
 /// Convenience global used by some pages.

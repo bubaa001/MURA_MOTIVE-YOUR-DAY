@@ -2,7 +2,7 @@
 name: mura
 description: MURA — personal discipline app (Obsidian & Amber).
 publish_to: 'none'
-version: 1.3.0+9
+version: 1.4.0+10
 
 environment:
   sdk: ^3.5.0
@@ -16,6 +16,11 @@ dependencies:
   image_picker: ^1.1.2
   package_info_plus: ^8.0.0
   path_provider: ^2.1.0
+  # Push notifications: FCM receives, flutter_local_notifications
+  # renders foreground messages (background ones use the system tray).
+  firebase_core: ^3.13.0
+  firebase_messaging: ^15.2.0
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:

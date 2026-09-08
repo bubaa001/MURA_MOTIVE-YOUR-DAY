@@ -69,6 +69,7 @@ class NotificationLog(models.Model):
         ("reminder", "Reminder"),
         ("streak_milestone", "Streak milestone"),
         ("goal_achieved", "Goal achieved"),
+        ("automation", "Automation"),
         ("general", "General"),
     ]
 

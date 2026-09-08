@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../habit_palette.dart';
 import '../models.dart';
 import '../refresh_bus.dart';
+import '../widgets/mura_widgets.dart';
 import '../theme.dart'; // ignore: unused_import
 
 /// MURA - Habits screen: active habit cards (icon, color dot, streaks,
@@ -50,17 +52,6 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     'financial',
     'spiritual',
   ];
-
-  static const Map<String, Color> _categoryColors = {
-    'primary': Color(0xFFFFC174),
-    'secondary': Color(0xFF6BD8CB),
-    'tertiary': Color(0xFFC7C8FF),
-    'error': Color(0xFFFFB4AB),
-    'physical': Color(0xFFFF8A80),
-    'mental': Color(0xFF6BD8CB),
-    'financial': Color(0xFFC7C8FF),
-    'spiritual': Color(0xFFFFC174),
-  };
 
   @override
   void initState() {
@@ -146,16 +137,6 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     }
   }
 
-  /// POST /habits/.
-  Future<Habit> _createHabit(
-      String name, String category, int graceDaysPerWeek) {
-    return _api.createHabit(
-      name: name,
-      category: category,
-      graceDaysPerWeek: graceDaysPerWeek,
-    );
-  }
-
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -170,55 +151,9 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
 
   // -------------------------------------------------------------- helpers
 
-  Color _colorOf(String? key) => _categoryColors[key] ?? _pal.amber;
+  Color _colorOf(String? key) => habitColorTones[key] ?? _pal.amber;
 
-  IconData _iconFor(String? name) {
-    switch (name) {
-      case 'menu_book':
-      case 'book':
-        return Icons.menu_book_outlined;
-      case 'fitness_center':
-        return Icons.fitness_center;
-      case 'directions_run':
-      case 'run':
-        return Icons.directions_run;
-      case 'savings':
-        return Icons.savings_outlined;
-      case 'paid':
-      case 'account_balance':
-        return Icons.account_balance_outlined;
-      case 'self_improvement':
-        return Icons.self_improvement;
-      case 'spa':
-        return Icons.spa_outlined;
-      case 'psychology':
-        return Icons.psychology_outlined;
-      case 'bedtime':
-        return Icons.bedtime_outlined;
-      case 'water_drop':
-        return Icons.water_drop_outlined;
-      case 'restaurant':
-        return Icons.restaurant_outlined;
-      case 'edit':
-      case 'journal':
-        return Icons.edit_note_outlined;
-      case 'code':
-        return Icons.code_outlined;
-      case 'language':
-        return Icons.language_outlined;
-      case 'music_note':
-        return Icons.music_note_outlined;
-      case 'timer':
-      case 'schedule':
-        return Icons.timer_outlined;
-      case 'bolt':
-        return Icons.bolt_outlined;
-      case 'star':
-        return Icons.star_outline;
-      default:
-        return Icons.bolt_outlined;
-    }
-  }
+  IconData _iconFor(String? name) => habitIcon(name);
 
   // ----------------------------------------------------------------- UI
 
@@ -234,21 +169,45 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
         color: _pal.amber,
         backgroundColor: const Color(0xFF1C1610),
         onRefresh: () async => _load(),
-        child: ListView(
+        // ListView.builder: only visible rows build, so 100+ habits scroll
+        // exactly as smoothly as 5 (the old eager list built every card).
+        child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics()),
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 18),
-            _buildStatsRow(),
-            const SizedBox(height: 18),
-            ..._buildHabitCards(),
-            const SizedBox(height: 14),
-            _buildCreateHabitButton(),
-            const SizedBox(height: 28),
-            _buildHeatmapCard(),
-          ],
+          // header, stats, gap, habit rows (or empty state), create, heatmap
+          itemCount: 3 + (_habits.isEmpty ? 1 : _habits.length) + 2,
+          itemBuilder: (context, index) {
+            if (index == 0) return _buildHeader();
+            if (index == 1) {
+              return Padding(
+                padding: const EdgeInsets.only(top: 18),
+                child: _buildStatsRow(),
+              );
+            }
+            if (index == 2) return const SizedBox(height: 18);
+            final habitIndex = index - 3;
+            if (_habits.isEmpty && habitIndex == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: _buildEmptyHabitsCard(),
+              );
+            }
+            if (habitIndex < _habits.length) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildHabitCard(_habits[habitIndex]),
+              );
+            }
+            final tail = habitIndex - (_habits.isEmpty ? 1 : _habits.length);
+            if (tail == 0) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 28),
+                child: _buildCreateHabitButton(),
+              );
+            }
+            return _buildHeatmapCard();
+          },
         ),
       );
     }
@@ -259,7 +218,7 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
       body: SafeArea(child: body),
       floatingActionButton: FloatingActionButton(
         heroTag: 'habits-fab',
-        onPressed: _showCreateDialog,
+        onPressed: () => _showHabitEditor(),
         backgroundColor: _pal.amberDeep,
         foregroundColor: _pal.onAmber,
         elevation: 3,
@@ -304,39 +263,28 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     );
   }
 
-  List<Widget> _buildHabitCards() {
-    if (_habits.isEmpty) {
-      return [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 36),
-          decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.light
-                ? Theme.of(context).colorScheme.surfaceContainer
-                : _pal.card,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0x12FFFFFF)),
+  Widget _buildEmptyHabitsCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 36),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.light
+            ? Theme.of(context).colorScheme.surfaceContainer
+            : _pal.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0x12FFFFFF)),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.add_circle_outline, color: _pal.textDim, size: 30),
+          const SizedBox(height: 10),
+          Text(
+            'No habits yet - tap + to forge your first one.',
+            style: TextStyle(color: _pal.textDim, fontSize: 13.5),
           ),
-          child: Column(
-            children: [
-              Icon(Icons.add_circle_outline, color: _pal.textDim, size: 30),
-              SizedBox(height: 10),
-              Text(
-                'No habits yet - tap + to forge your first one.',
-                style: TextStyle(color: _pal.textDim, fontSize: 13.5),
-              ),
-            ],
-          ),
-        ),
-      ];
-    }
-
-    final cards = <Widget>[];
-    for (var i = 0; i < _habits.length; i++) {
-      cards.add(_buildHabitCard(_habits[i]));
-      if (i < _habits.length - 1) cards.add(const SizedBox(height: 12));
-    }
-    return cards;
+        ],
+      ),
+    );
   }
 
   Widget _buildStatsRow() {
@@ -425,7 +373,7 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     final scheme = Theme.of(context).colorScheme;
     final light = Theme.of(context).brightness == Brightness.light;
     return OutlinedButton.icon(
-      onPressed: _showCreateDialog,
+      onPressed: () => _showHabitEditor(),
       icon: const Icon(Icons.add_circle_outline, size: 20),
       label: const Text('Create New Habit'),
       style: OutlinedButton.styleFrom(
@@ -448,7 +396,13 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     final accent = _colorOf(h.color);
     final grace = h.graceDaysPerWeek;
 
-    return Container(
+    return InkWell(
+      // Interactivity: the whole card opens the editor (icon, color,
+      // name, schedule, delete) — previously nothing on this page was
+      // tappable.
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _showHabitEditor(h),
+      child: Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: light ? scheme.surfaceContainer : _pal.card,
@@ -574,6 +528,7 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -719,13 +674,19 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
     );
   }
 
-  // -------------------------------------------------------- create dialog
+  // -------------------------------------------------------- habit editor
 
-  Future<void> _showCreateDialog() async {
-    var name = '';
-    var category = 'mental';
-    var grace = 1;
-    var scheduleDays = <int>[1, 2, 3, 4, 5, 6, 7];
+  /// Create (habit == null) or edit an existing habit: name, icon picker,
+  /// color picker, category, schedule, grace days — plus delete when
+  /// editing. The backend accepts icon/color on both POST and PATCH.
+  Future<void> _showHabitEditor([Habit? habit]) async {
+    var name = habit?.name ?? '';
+    var category = habit?.category ?? 'mental';
+    var icon = habit?.icon ?? 'bolt';
+    var color = habit?.color ?? defaultColorForCategory(category);
+    var grace = habit?.graceDaysPerWeek ?? 1;
+    var scheduleDays =
+        habit?.scheduleDays ?? const <int>[1, 2, 3, 4, 5, 6, 7];
     var busy = false;
     String? error;
 
@@ -735,6 +696,7 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
             final nav = Navigator.of(dialogContext);
+            final editing = habit != null;
 
             Future<void> submit() async {
               if (name.trim().isEmpty || busy) return;
@@ -743,20 +705,78 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                 error = null;
               });
               try {
-                await _api.createHabit(
-                  name: name.trim(),
-                  category: category,
-                  graceDaysPerWeek: grace,
-                  scheduleDays: scheduleDays,
-                );
-                nav.pop();
-                if (!mounted) return;
-                _load();
-                _toast('Habit created.');
+                final fields = <String, dynamic>{
+                  'name': name.trim(),
+                  'category': category,
+                  'icon': icon,
+                  'color': color,
+                  'grace_days_per_week': grace,
+                  'schedule_days': scheduleDays,
+                };
+                if (editing) {
+                  await _api.updateHabit(habit.id, fields);
+                  nav.pop();
+                  if (!mounted) return;
+                  _load();
+                  _toast('Habit updated.');
+                } else {
+                  await _api.createHabit(
+                    name: name.trim(),
+                    category: category,
+                    icon: icon,
+                    color: color,
+                    graceDaysPerWeek: grace,
+                    scheduleDays: scheduleDays,
+                  );
+                  nav.pop();
+                  if (!mounted) return;
+                  _load();
+                  _toast('Habit created.');
+                }
               } catch (_) {
                 setDialogState(() {
                   busy = false;
-                  error = 'Could not create the habit. Please try again.';
+                  error = 'Could not save the habit. Please try again.';
+                });
+              }
+            }
+
+            Future<void> delete() async {
+              final ok = await showDialog<bool>(
+                context: dialogContext,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: _pal.card,
+                  title: Text('Delete "${habit!.name}"?',
+                      style:
+                          TextStyle(color: _pal.text, fontSize: 16)),
+                  content: Text(
+                      'Its history and streaks are removed permanently.',
+                      style:
+                          TextStyle(color: _pal.textDim, fontSize: 12.5)),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: Text('Cancel',
+                            style: TextStyle(color: _pal.textDim))),
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: Text('Delete',
+                            style: TextStyle(
+                                color: _pal.coral,
+                                fontWeight: FontWeight.w700))),
+                  ],
+                ),
+              );
+              if (ok != true) return;
+              try {
+                await _api.deleteHabit(habit!.id);
+                nav.pop();
+                if (!mounted) return;
+                _load();
+                _toast('Habit deleted.');
+              } catch (_) {
+                setDialogState(() {
+                  error = 'Could not delete the habit.';
                 });
               }
             }
@@ -767,7 +787,7 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                 borderRadius: BorderRadius.circular(20),
               ),
               title: Text(
-                'New Habit',
+                editing ? 'Edit Habit' : 'New Habit',
                 style: TextStyle(
                   color: _pal.text,
                   fontSize: 18,
@@ -781,7 +801,10 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     TextField(
-                      autofocus: true,
+                      autofocus: !editing,
+                      controller: TextEditingController(text: name)
+                        ..selection = TextSelection.collapsed(
+                            offset: name.length),
                       onChanged: (v) => name = v,
                       style: TextStyle(color: _pal.text, fontSize: 15),
                       decoration: InputDecoration(
@@ -804,6 +827,103 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                     ),
                     const SizedBox(height: 16),
                     Text(
+                      'ICON',
+                      style: TextStyle(
+                        color: _pal.textDim,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Icon picker: a lazy grid of every habitIconChoices
+                    // entry; the selected one glows amber.
+                    SizedBox(
+                      height: 210,
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 6,
+                          mainAxisSpacing: 6,
+                          crossAxisSpacing: 6,
+                        ),
+                        itemCount: habitIconChoices.length,
+                        itemBuilder: (context, i) {
+                          final (key, iconData) = habitIconChoices[i];
+                          final selected = key == icon;
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () => setDialogState(() => icon = key),
+                            child: Container(
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? _pal.amber
+                                    : _pal.cardAlt,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: selected
+                                      ? _pal.amber
+                                      : _pal.outline,
+                                ),
+                              ),
+                              child: Icon(
+                                iconData,
+                                size: 20,
+                                color: selected
+                                    ? _pal.onAmber
+                                    : _colorOf(color),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'COLOR',
+                      style: TextStyle(
+                        color: _pal.textDim,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.8,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: habitColorKeys.map((key) {
+                        final selected = key == color;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(999),
+                            onTap: () => setDialogState(() => color = key),
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: _colorOf(key),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected
+                                      ? _pal.text
+                                      : Colors.transparent,
+                                  width: 2.5,
+                                ),
+                              ),
+                              child: selected
+                                  ? Icon(Icons.check,
+                                      size: 16, color: _pal.bg)
+                                  : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
                       'CATEGORY',
                       style: TextStyle(
                         color: _pal.textDim,
@@ -820,7 +940,12 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                         return _buildCategoryChip(
                           c,
                           c == category,
-                          (sel) => setDialogState(() => category = c),
+                          (sel) => setDialogState(() {
+                            category = c;
+                            // Sensible color default follows category
+                            // until the user has chosen one themselves.
+                            color = defaultColorForCategory(c);
+                          }),
                         );
                       }).toList(),
                     ),
@@ -928,6 +1053,17 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                 ),
               ),
               actions: [
+                if (editing)
+                  TextButton(
+                    onPressed: busy ? null : delete,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _pal.coral,
+                    ),
+                    child: const Text(
+                      'DELETE',
+                      style: TextStyle(fontSize: 12.5, letterSpacing: 1),
+                    ),
+                  ),
                 TextButton(
                   onPressed: () => nav.pop(),
                   style: TextButton.styleFrom(
@@ -959,9 +1095,9 @@ class _HabitsPageState extends State<HabitsPage> with AppRefreshListener {
                             color: _pal.onAmber,
                           ),
                         )
-                      : const Text(
-                          'CREATE',
-                          style: TextStyle(
+                      : Text(
+                          editing ? 'SAVE' : 'CREATE',
+                          style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 1,
@@ -1019,16 +1155,35 @@ class _LoadingView extends StatelessWidget {
   const _LoadingView();
 
   @override
-  Widget build(BuildContext context) { final MuraPalette pal = MuraPalette.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: const [
-        CircularProgressIndicator(color: Color(0xFFF59E0B), strokeWidth: 2.6),
-        SizedBox(height: 16),
-        Text(
-          'Loading habits...',
-          style: TextStyle(color: Color(0xFFA08E7A), fontSize: 13),
+  Widget build(BuildContext context) {
+    // Skeleton preview of the real layout: stats pair, then habit-card
+    // blocks — so the first paint already looks like the finished page.
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 96),
+      children: [
+        for (final _ in Iterable<int>.generate(3))
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Shimmer(width: 200, height: 18),
+              const SizedBox(height: 8),
+              Shimmer(width: 120, height: 12),
+              const SizedBox(height: 10),
+            ],
+          ),
+        Row(
+          children: [
+            Expanded(child: Shimmer(height: 76, radius: 16)),
+            const SizedBox(width: 12),
+            Expanded(child: Shimmer(height: 76, radius: 16)),
+          ],
         ),
+        const SizedBox(height: 18),
+        for (final _ in Iterable<int>.generate(4))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Shimmer(height: 110, radius: 16),
+          ),
       ],
     );
   }
@@ -1041,7 +1196,7 @@ class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
 
   @override
-  Widget build(BuildContext context) { final MuraPalette pal = MuraPalette.of(context);
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(32),
       child: Column(

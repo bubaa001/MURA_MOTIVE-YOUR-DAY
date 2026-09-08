@@ -1,4 +1,4 @@
-"""Push due reminders to each user's personal Signo topic.
+"""Push due reminders to each user (FCM devices first, Signo fallback).
 
 Designed for PythonAnywhere scheduled tasks, which fire hourly at best:
 a reminder is due when the current local time has PASSED its HH:MM today
@@ -17,8 +17,8 @@ import datetime as dt
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from push.notify import notify_user
 from reminders.models import NotificationLog, Reminder
-from reminders.signo import SignoError, send_user_event
 
 # How late a run may be and still send the reminder it missed. Must cover
 # the scheduler gap plus clock skew; 2h catches a skipped hourly run.
@@ -26,7 +26,7 @@ CATCHUP_WINDOW = dt.timedelta(hours=2)
 
 
 class Command(BaseCommand):
-    help = "Push reminders due right now to each user's personal topic via Signo."
+    help = "Push reminders due right now (FCM first, Signo topic fallback)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -42,14 +42,25 @@ class Command(BaseCommand):
 
         # Time-window match instead of exact HH:MM: a scheduler running
         # hourly (PythonAnywhere) or every few minutes still delivers.
+        # The queryset's lower bound is loosened when the window wraps
+        # past midnight (now shortly after 00:00) and the wrap logic
+        # lives in the Python filter below.
         window_start = (now - CATCHUP_WINDOW).time()
         current_time = now.time().replace(second=0, microsecond=0)
+        wrapped = window_start > current_time
+        lo = current_time if wrapped else window_start
 
-        due = [
-            r
-            for r in Reminder.objects.filter(is_active=True, time__gte=window_start, time__lte=current_time)
-            if (not r.days or weekday in r.days) and r.last_pushed_date != today
-        ]
+        due = []
+        yesterday = today - dt.timedelta(days=1)
+        for r in Reminder.objects.filter(is_active=True, time__gte=lo, time__lte=current_time):
+            if not (not r.days or weekday in r.days):
+                continue
+            # fire time at/before now = today's slot; after now (wrapped
+            # only) = yesterday's missed slot, deduped on yesterday so a
+            # slot that already fired never double-sends after midnight.
+            already_fired_on = today if r.time <= current_time else yesterday
+            if r.last_pushed_date != already_fired_on:
+                due.append(r)
         if not due:
             self.stdout.write("no reminders due")
             return
@@ -60,18 +71,15 @@ class Command(BaseCommand):
             if options["dry_run"]:
                 self.stdout.write(f"would push: {label}")
                 continue
-            try:
-                result = send_user_event(
-                    reminder.user,
-                    title=reminder.title,
-                    body=reminder.message,
-                    priority="time-sensitive" if reminder.category in {"health", "mental"} else "default",
-                    payload={"kind": "reminder", "reminderId": reminder.id, "category": reminder.category},
-                )
-            except SignoError as exc:
-                failed += 1
-                self.stderr.write(f"FAILED: {label}: {exc}")
-                continue
+            # "time-sensitive" is a Signo priority; FCM carries the same
+            # nudge through the device notification itself.
+            result = notify_user(
+                reminder.user,
+                reminder.title,
+                reminder.message,
+                priority="time-sensitive" if reminder.category in {"health", "mental"} else "default",
+                payload={"kind": "reminder", "reminderId": reminder.id, "category": reminder.category},
+            )
             reminder.last_pushed_date = today
             reminder.save(update_fields=["last_pushed_date"])
             NotificationLog.objects.create(
@@ -80,13 +88,15 @@ class Command(BaseCommand):
                 body=reminder.message,
                 kind="reminder",
             )
-            if result:
+            if result and result.get("devices"):
                 sent += 1
-                self.stdout.write(f"pushed: {label} -> {result.get('delivered')} device(s)")
+                self.stdout.write(
+                    f"pushed: {label} -> {result.get('devices')} device(s) via {result.get('channel')}"
+                )
             else:
                 # Recorded in the in-app feed even though the user has no
-                # personal push topic subscribed yet.
+                # active push channel yet (no FCM device, no Signo topic).
                 skipped += 1
-                self.stdout.write(f"logged only (no personal topic): {label}")
+                self.stdout.write(f"logged only (no device/channel): {label}")
 
         self.stdout.write(self.style.SUCCESS(f"sent={sent} skipped={skipped} failed={failed}"))

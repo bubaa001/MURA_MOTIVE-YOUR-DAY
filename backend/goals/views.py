@@ -2,8 +2,9 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from automations.engine import fire_event
+from push.notify import notify_user
 from reminders.models import NotificationLog
-from reminders.signo import send_user_event
 
 from .models import Goal
 from .serializers import GoalSerializer
@@ -26,6 +27,10 @@ class GoalViewSet(viewsets.ModelViewSet):
     def complete(self, request, pk=None):
         """/goals/{id}/complete/ -> mark achieved."""
         goal = self.get_object()
+        if goal.status == "achieved":
+            # Idempotent: a double-tap must not re-celebrate or re-fire
+            # goal automations for a goal that is already achieved.
+            return Response(GoalSerializer(goal).data)
         goal.status = "achieved"
         goal.progress = 100
         goal.save(update_fields=["status", "progress"])
@@ -40,14 +45,13 @@ class GoalViewSet(viewsets.ModelViewSet):
             body=body,
             kind="goal_achieved",
         )
-        try:
-            send_user_event(
-                goal.user,
-                title,
-                body,
-                priority="high",
-                payload={"kind": "goal_achieved", "goalId": goal.id},
-            )
-        except Exception:
-            pass  # a push failure must never fail the achievement
+        # FCM-first push (Signo fallback); a push failure must never fail
+        # the achievement.
+        notify_user(
+            goal.user,
+            title,
+            body,
+            payload={"kind": "goal_achieved", "goalId": goal.id},
+        )
+        fire_event(goal.user, "goal_achieved", goal=goal)
         return Response(GoalSerializer(goal).data)

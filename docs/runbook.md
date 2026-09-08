@@ -108,26 +108,44 @@ The free tier allows a few scheduled tasks. Create these:
 | DB backup | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py db_backup` | Daily |
 | Reminders | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py push_due_reminders` | Hourly |
 | Campaigns | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py send_due_pushes` | Hourly |
+| Automations | `cd /home/bubaa/MURA/backend && .venv/bin/python manage.py run_automations` | Hourly |
 
 Notes:
 - Reminder pushes match a **due window** (past HH:MM within the last 2h), so
   hourly runs still deliver; a missed window self-heals on the next run for
   any reminder that day. Exact-minute precision is not possible on this host.
+- The Automations task only evaluates `daily_nudge` rules (same 2h catch-up
+  window + same-day dedup). Reactive rules (habit done / streak / goal) fire
+  instantly inside the API call — no scheduler involved.
 - Free-tier tasks are "daily at best" per the PA docs — if hourly is not
   available, reminders degrade gracefully: set them on the hour and accept
   batch delivery. For real-time pushes later, upgrade to the $5/mo tier.
 
 ---
 
-## 5. Push notifications (Signo) — architecture
+## 5. Push notifications — architecture
 
-- **Global namespace** (`SIGNO_NAMESPACE`): reaches every subscribed device.
-  Used ONLY by the studio's broadcast campaigns.
-- **Per-user topics** (`{SIGNO_NAMESPACE}:{user_id}`): personal events
-  (streak milestones, goal wins, reminders) go here and nowhere else — this
-  is what prevents one user's habit names from landing on another user's
-  phone. A device only receives personal pushes once it subscribes to its
-  user's topic in the Signo app.
+MURA now has TWO push channels; `notify_user()` picks per user automatically:
+
+1. **FCM (primary, v1.4.0+):** every Android phone with the app installed
+   receives pushes natively — **no third-party app needed**. The app
+   registers its Firebase token at `POST /me/devices/` after sign-in; the
+   backend sends through the FCM HTTP v1 API using a service-account key.
+   - Server config (backend `.env`, NEVER commit): `FCM_PROJECT_ID`,
+     `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY` — from Firebase console →
+     Project settings → Service accounts → Generate new private key.
+   - Dead tokens (app uninstalled / logged out) are auto-deactivated on the
+     first failed send.
+2. **Signo (fallback + broadcasts):** when a user has NO active FCM device,
+   personal events fall back to their per-user Signo topic, so existing
+   Signo subscribers keep receiving pushes after the app update. The
+   **global namespace** (`SIGNO_NAMESPACE`) stays studio-broadcasts-only.
+
+Studio campaigns send through BOTH audiences (all FCM devices + all Signo
+subscribers) — they are different people, not duplicates.
+
+If the FCM_* env vars are missing, the FCM leg is skipped silently and the
+system behaves exactly as before (Signo only).
 
 ---
 

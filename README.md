@@ -61,7 +61,7 @@ npm run dev        # http://localhost:5175 - sign in with a staff account
 $env:GITHUB_TOKEN = "<token>"
 python manage.py publish_release ^
     --apk ..\flutter_app\build\app\outputs\flutter-apk\app-release.apk ^
-    --version-name 1.3.0 --version-code 8 --notes "what changed" ^
+    --version-name 1.4.0 --version-code 10 --notes "what changed" ^
     --github bubaa001/MURA_MOTIVE-YOUR-DAY
 ```
 

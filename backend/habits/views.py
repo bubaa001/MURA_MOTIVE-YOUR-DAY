@@ -7,8 +7,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from reminders.models import NotificationLog
-from reminders.signo import send_user_event
+from push.notify import notify_user
 
+from automations.engine import day_complete, fire_event
 from .models import Habit, HabitLog
 from .serializers import HabitSerializer, HabitToggleSerializer, HabitWriteSerializer
 from .services import completion_rate_30d, heatmap, habit_streaks, scheduled_days
@@ -30,17 +31,14 @@ def _celebrate_streak(user, habit: Habit, streak: int) -> None:
         body=body,
         kind="streak_milestone",
     )
-    try:
-        send_user_event(
-            user,
-            title,
-            body,
-            priority="default",
-            payload={"kind": "streak_milestone", "habitId": habit.id, "streak": streak},
-        )
-    except Exception:
-        # Push is best-effort; the milestone is already recorded above.
-        pass
+    # FCM-first push (Signo fallback); best-effort — the milestone is
+    # already recorded above.
+    notify_user(
+        user,
+        title,
+        body,
+        payload={"kind": "streak_milestone", "habitId": habit.id, "streak": streak},
+    )
 
 
 class HabitViewSet(viewsets.ModelViewSet):
@@ -145,6 +143,19 @@ class HabitViewSet(viewsets.ModelViewSet):
 
         if log.completed:
             _celebrate_streak(request.user, habit, stats["current_streak"])
+            # User-defined automations fire after the toggle commits; each
+            # dispatch is best-effort and never breaks the toggle response.
+            fire_event(
+                request.user, "habit_done", habit=habit, streak=stats["current_streak"]
+            )
+            fire_event(
+                request.user,
+                "streak_reached",
+                habit=habit,
+                streak=stats["current_streak"],
+            )
+            if day_complete(request.user):
+                fire_event(request.user, "all_habits_done", habit=habit)
 
         return Response(
             {

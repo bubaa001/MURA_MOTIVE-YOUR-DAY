@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../refresh_bus.dart';
+import '../widgets/mura_widgets.dart';
 import '../models.dart';
 import '../theme.dart'; // ignore: unused_import -- shared tokens land here later.
 
@@ -407,15 +408,7 @@ class _PlanPageState extends State<PlanPage> with AppRefreshListener {
               ],
             ),
             const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: frac,
-                minHeight: 6,
-                backgroundColor: const Color(0xFF2A2013),
-                valueColor: AlwaysStoppedAnimation<Color>(_pal.amber),
-              ),
-            ),
+            AnimatedProgressBar(value: frac, height: 6, color: _pal.amber),
           ],
         ),
       ),
@@ -700,14 +693,10 @@ class _PriorityTile extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 7),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: p.completed ? 1.0 : 0.04,
-                    minHeight: 3,
-                    backgroundColor: const Color(0xFF2A2013),
-                    valueColor: AlwaysStoppedAnimation<Color>(pal.amber),
-                  ),
+                AnimatedProgressBar(
+                  value: p.completed ? 1.0 : 0.04,
+                  height: 3,
+                  color: pal.amber,
                 ),
                 const SizedBox(height: 7),
                 Row(

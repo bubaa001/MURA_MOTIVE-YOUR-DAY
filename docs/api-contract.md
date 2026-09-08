@@ -140,6 +140,35 @@ CRUD at `/memories/`.
 
 CRUD at `/reminders/`. Client schedules local notifications from this list (Phase 2 moves scheduling server-side).
 
+## Push devices (FCM token registration)
+
+`{id, token, platform ("android"|"ios"|"web"), is_active, created_at}`
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | /me/devices/ | `{token, platform}` — idempotent upsert: re-POSTing a known token refreshes/reactivates its row (safe on app restart, reinstall, token rotation) |
+| GET | /me/devices/ | list the caller's active devices |
+| DELETE | /me/devices/{id}/ | soft-deactivates one device (pushes stop; row kept so a future re-sign-in is still an update) |
+
+Deleting marks `is_active=false` rather than dropping the row — the unique token constraint means a hard delete would race a concurrent re-register.
+
+## Automations (user-defined WHEN → THEN rules)
+
+`{id, name, trigger_type, trigger_config, action_type, action_config, is_active, last_fired_date, created_at, updated_at}`
+
+CRUD at `/automations/` (user-scoped). `POST /automations/{id}/toggle/` flips `is_active`.
+
+Trigger types + config:
+- `habit_done` — `{habit_id?: int}` (omit = any habit); fires on completion
+- `all_habits_done` — `{}`; fires when the day's checklist clears
+- `streak_reached` — `{streak: int, habit_id?: int}`; fires exactly at N (once per day per rule)
+- `goal_achieved` — `{goal_id?: int}`; fires once per goal (double-complete is a no-op)
+- `daily_nudge` — `{time: "HH:MM", only_if_incomplete: bool}`; evaluated hourly by `manage.py run_automations` (2h catch-up window, same-day dedup)
+
+Action `push` config: `{title, body}` — `{habit}`, `{streak}`, `{goal}` placeholders render real values. Every fire writes an in-app `NotificationLog` (kind `automation`) plus a push via FCM (Signo fallback when the user has no registered device).
+
+Config validation: unknown `habit_id` (404-style) and malformed `time`/`streak` are 400s; habit ids are scoped to the caller (another user's id is rejected as "no habit with that id").
+
 ## TheFeeder (staff studio — all endpoints require is_staff)
 
 | Method | Path | Notes |

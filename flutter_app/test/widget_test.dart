@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mura/main.dart';
-import 'package:mura/pages/settings_page.dart';
+import 'package:mura/pages/profile_page.dart';
 import 'package:mura/theme.dart';
 
 void main() {
@@ -19,7 +19,7 @@ void main() {
         themeMode: ThemeMode.dark,
         home: const HomeShell(),
         routes: <String, WidgetBuilder>{
-          '/settings': (_) => const SettingsPage(),
+          '/settings': (_) => const ProfilePage(),
         },
       ),
     );
@@ -54,7 +54,7 @@ void main() {
     // Settings is NOT a bottom tab anymore; the avatar opens it.
     expect(find.descendant(of: bar, matching: find.text('Settings')),
         findsNothing);
-    expect(find.text('B'), findsOneWidget); // avatar initial
+    expect(find.text('M'), findsOneWidget); // avatar initial (falls back to 'M' with no /me/ user)
   });
 
   testWidgets('tapping a destination switches the visible page',
@@ -80,16 +80,16 @@ void main() {
     expect(navIndex(), 2);
   });
 
-  testWidgets('settings action pushes /settings above the shell',
+  testWidgets('avatar action pushes the Profile page above the shell',
       (tester) async {
     await pumpShell(tester);
 
-    await tester.tap(find.text('B')); // profile avatar opens Settings
+    await tester.tap(find.text('M')); // profile avatar opens Profile
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump(const Duration(milliseconds: 400));
 
     // Settings route pushed on top of the shell, which stays mounted below.
-    expect(find.byType(SettingsPage), findsOneWidget);
+    expect(find.byType(ProfilePage), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
   });
 }

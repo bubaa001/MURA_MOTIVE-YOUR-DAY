@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
@@ -6,13 +7,15 @@ import 'package:flutter/material.dart';
 import 'api.dart';
 import 'models.dart';
 import 'onboarding_flow.dart';
+import 'pages/automations_page.dart';
 import 'pages/habits_page.dart';
 import 'pages/journal_page.dart';
 import 'pages/library_page.dart';
 import 'pages/plan_page.dart';
-import 'pages/settings_page.dart';
+import 'pages/profile_page.dart';
 import 'pages/today_page.dart';
 import 'pages/wealth_page.dart';
+import 'push_service.dart';
 import 'refresh_bus.dart';
 import 'theme.dart';
 import 'updater.dart';
@@ -36,6 +39,9 @@ Future<void> main() async {
     }
     return true;
   };
+  // Firebase/local notifications. Failures (no Play services, no config)
+  // disable push only — the in-app feed still works.
+  await initPush();
   await loadMuraThemeMode();
   runApp(const MuraApp());
 }
@@ -74,9 +80,12 @@ class _MuraAppState extends State<MuraApp> {
       _hasToken = hasToken;
       _restoring = false;
     });
-    // When a signed-in user reaches the shell, quietly check whether a newer
-    // build was published and offer the in-app update.
     if (hasToken) {
+      // Re-register this device for pushes (idempotent upsert) so token
+      // rotation never silently stops delivery on an already-signed-in user.
+      unawaited(registerForPush());
+      // When a signed-in user reaches the shell, quietly check whether a newer
+      // build was published and offer the in-app update.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         Future<void>.delayed(const Duration(seconds: 3), maybePromptForUpdate);
       });
@@ -107,11 +116,13 @@ class _MuraAppState extends State<MuraApp> {
       );
     } else if (_hasToken) {
       homeWidget = HomeShell();
+      unawaited(registerForPush());
     } else {
       homeWidget = OnboardingFlow(
         authEnabled: true,
         onFinished: () {
           if (!mounted) return;
+          unawaited(registerForPush());
           setState(() {
             _hasToken = true;
           });
@@ -140,13 +151,15 @@ class _MuraAppState extends State<MuraApp> {
                 authEnabled: true,
                 onFinished: () {
                   if (!mounted) return;
+                  unawaited(registerForPush());
                   setState(() {
                     _hasToken = true;
                   });
                 },
               ),
           '/home': (_) => HomeShell(),
-          '/settings': (_) => const SettingsPage(),
+          '/settings': (_) => const ProfilePage(),
+          '/automations': (_) => const AutomationsPage(),
         },
       ),
     );
@@ -333,9 +346,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             initials: _user?.effectiveName,
           ),
           Expanded(
-            child: KeyedSubtree(
-              key: ValueKey<int>(_tab),
-              child: _pages[_tab],
+            // IndexedStack keeps every tab's state alive (scroll position,
+            // loaded data) instead of remounting on each switch — switching
+            // is now instant, and the AnimatedSwitcher cross-fades the top
+            // bar title.
+            child: IndexedStack(
+              index: _tab,
+              children: _pages,
             ),
           ),
         ],
@@ -396,13 +413,19 @@ class _TopBar extends StatelessWidget {
                 Icon(Icons.local_fire_department_rounded,
                     color: scheme.primary, size: 24),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
+                // Soft cross-fade between tab titles (the pages persist in
+                // the IndexedStack below, so only the label changes).
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: Text(
+                    title,
+                    key: ValueKey<String>(title),
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
                 const Spacer(),
